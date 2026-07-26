@@ -22,6 +22,9 @@ authors:
   - family-names: Matsuo
     given-names: Yuto
     affiliation: "Chiba University, Graduate School of Science and Engineering"
+  - family-names: Fujima
+    given-names: Yudai
+    affiliation: "Chiba University, Graduate School of Science and Engineering"
 license: Apache-2.0
 repository-code: "https://github.com/itotlab-system/opticaltwin-core"
 url: "https://github.com/itotlab-system/opticaltwin-core"
