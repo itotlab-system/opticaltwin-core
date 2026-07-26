@@ -1,5 +1,8 @@
 # OpticalTwin
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21594827.svg)](https://doi.org/10.5281/zenodo.21594827)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 Interactive 3D viewer and editor for **optical laboratory setups**, built on
 [OpenUSD](https://openusd.org/) and [React Three Fiber](https://r3f.docs.pmnd.rs/).
 
@@ -124,7 +127,7 @@ If you use OpticalTwin in your research, please cite it as:
 > Kumano, K., Yoshino, K., Goto, M., & Matsuo, Y. (2026).
 > *OpticalTwin: a browser-based 3D viewer and editor for optical laboratory setups*
 > (Version 1.0.0) [Computer software].
-> https://github.com/itotlab-system/opticaltwin-core
+> Zenodo. https://doi.org/10.5281/zenodo.21594827
 
 BibTeX:
 
@@ -134,6 +137,8 @@ BibTeX:
   title   = {{OpticalTwin: a browser-based 3D viewer and editor for optical laboratory setups}},
   year    = {2026},
   version = {1.0.0},
+  doi     = {10.5281/zenodo.21594827},
+  publisher = {Zenodo},
   url     = {https://github.com/itotlab-system/opticaltwin-core}
 }
 ```
@@ -189,4 +194,4 @@ TLS 終端のリバースプロキシを前段に置いてください。
 ## 引用
 
 研究で使用した場合は、上記 Citation 節の形式、または `CITATION.cff` を参照して
-引用してください。
+引用してください。DOI は **10.5281/zenodo.21594827** です（常に最新版を指します）。

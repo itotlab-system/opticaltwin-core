@@ -35,6 +35,7 @@ keywords:
   - digital twin
   - 3D visualization
   - React Three Fiber
-# After the first Zenodo release, uncomment and paste the *concept* DOI
-# (the one that always points at the newest version):
-# doi: 10.5281/zenodo.XXXXXXX
+# Zenodo concept DOI -- always resolves to the newest version. Leave this one in
+# place across releases; each version also gets its own DOI (v1.0.0 is
+# 10.5281/zenodo.21594828) which is only needed to pin an exact version.
+doi: 10.5281/zenodo.21594827
