@@ -124,7 +124,7 @@ base dependencies alone.
 
 If you use OpticalTwin in your research, please cite it as:
 
-> Kumano, K., Yoshino, K., Goto, M., & Matsuo, Y. (2026).
+> Kumano, K., Yoshino, K., Goto, M., Matsuo, Y., & Fujima, Y. (2026).
 > *OpticalTwin: a browser-based 3D viewer and editor for optical laboratory setups*
 > (Version 1.0.0) [Computer software].
 > Zenodo. https://doi.org/10.5281/zenodo.21594827
@@ -133,7 +133,8 @@ BibTeX:
 
 ```bibtex
 @software{opticaltwin,
-  author  = {Kumano, Kai and Yoshino, Kota and Goto, Masato and Matsuo, Yuto},
+  author  = {Kumano, Kai and Yoshino, Kota and Goto, Masato and Matsuo, Yuto
+             and Fujima, Yudai},
   title   = {{OpticalTwin: a browser-based 3D viewer and editor for optical laboratory setups}},
   year    = {2026},
   version = {1.0.0},
