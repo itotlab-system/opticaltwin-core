@@ -1,0 +1,666 @@
+:root {
+  --bg: #0f1115;
+  --panel: #161a20;
+  --panel-2: #1d222a;
+  --row: #1a1f27;
+  --line: #2a3038;
+  --text: #e7eaee;
+  --muted: #8b929c;
+  --accent: #4c8dff;
+  --accent-dim: #2a4a85;
+  --good: #2ea043;
+  --danger: #e5534b;
+  font-synthesis: none;
+}
+
+:root[data-theme="light"] {
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --panel-2: #eef1f5;
+  --row: #e9edf2;
+  --line: #d3d8e0;
+  --text: #1b1f26;
+  --muted: #5b636e;
+  --accent: #2563eb;
+  --accent-dim: #dbe7ff;
+  --good: #1a7f37;
+  --danger: #d33;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app { height: 100%; display: flex; flex-direction: column; }
+
+/* ---- top bar ---- */
+.toolbar {
+  height: 52px; flex: 0 0 auto;
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 18px;
+  background: var(--panel);   /* adapts to dark/light theme */
+  color: var(--text);
+  border-bottom: 1px solid var(--line);
+}
+.brand { font-weight: 700; letter-spacing: .3px; font-size: 15px; }
+.brand .dot { color: var(--accent); }
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  flex: 0 0 190px;
+  width: 190px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+.brand-logo img {
+  display: block;
+  position: absolute;
+  inset: 4px 6px;
+  width: calc(100% - 12px);
+  height: calc(100% - 8px);
+  object-fit: contain;
+}
+.brand-logo-dark { opacity: 0; }
+:root[data-theme="dark"] .brand-logo { background: transparent; }
+:root[data-theme="dark"] .brand-logo-light { opacity: 0; }
+:root[data-theme="dark"] .brand-logo-dark { opacity: 1; }
+.tag { font-size: 11px; color: var(--muted); }
+.spacer { flex: 1; }
+
+select, button, input {
+  font: inherit; color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 7px; padding: 7px 11px; font-size: 13px;
+}
+button { cursor: pointer; transition: border-color .15s, background .15s; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent-dim); border-color: var(--accent); }
+button.ghost { background: transparent; }
+.toggle { font-size: 12px; padding: 6px 9px; }
+
+/* ---- workspace ---- */
+.work { flex: 1; min-height: 0; display: flex; }
+.panel-slot {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-height: 0;
+  background: var(--panel);
+  transition: width .15s ease;
+}
+.outliner-slot { border-right: 1px solid var(--line); }
+.inspector-slot { border-left: 1px solid var(--line); }
+.outliner-slot.open { width: 260px; }
+.inspector-slot.open { width: 320px; }
+.panel-slot.closed { width: 38px; }
+.panel-toggle {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  height: 30px;
+  margin: 8px;
+  padding: 5px 8px;
+  background: var(--panel-2);
+  border-color: var(--line);
+  font-size: 11px;
+}
+.panel-slot.closed .panel-toggle {
+  margin: 8px 4px;
+  height: auto;
+  padding: 8px 4px;
+  writing-mode: vertical-rl;
+}
+.outliner { width: 100%; flex: 1; min-height: 0; border: 0;
+  background: var(--panel); overflow-y: auto; }
+.viewport { flex: 1; min-width: 0; position: relative; }
+.inspector { width: 100%; flex: 1; min-height: 0; border: 0;
+  background: var(--panel); overflow-y: auto; }
+
+.section-title {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .8px;
+  color: var(--muted); padding: 14px 16px 8px;
+}
+
+/* ---- outliner rows ---- */
+.node {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; cursor: pointer; border-left: 2px solid transparent;
+  font-size: 13px;
+}
+.node:hover { background: var(--row); }
+.node.sel { background: var(--row); border-left-color: var(--accent); }
+.node .swatch { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+.node .nm { flex: 1; }
+.node .ty { font-size: 10px; color: var(--muted); }
+.x-hint { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ---- inspector ---- */
+.insp-head { padding: 16px 16px 6px; }
+.insp-head .nm { font-size: 15px; font-weight: 600; }
+.insp-head .ty { font-size: 11px; color: var(--muted); }
+.insp-type-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.type-chip { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+.fieldgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 8px 16px 4px; }
+.field label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+.field input { width: 100%; font-variant-numeric: tabular-nums; }
+.field input:focus { outline: none; border-color: var(--accent); }
+.props { padding: 8px 16px 16px; }
+.prop { display: flex; justify-content: space-between; font-size: 12px;
+  padding: 5px 0; border-bottom: 1px solid var(--line); }
+.prop .k { color: var(--muted); }
+.prop .v { font-variant-numeric: tabular-nums; }
+.dist { font-size: 11px; color: var(--muted); padding: 0 16px 10px; }
+.row-actions { padding: 10px 16px; }
+.danger { color: var(--danger); border-color: transparent; background: transparent; }
+.danger:hover { border-color: var(--danger); }
+
+/* ---- project gallery (landing) ---- */
+.gallery { flex: 1; overflow-y: auto; padding: 36px 48px; }
+.gallery-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+.gallery-head h1 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+.gallery-head p { margin: 0; color: var(--muted); font-size: 13px; }
+button.big { padding: 10px 16px; font-size: 14px; }
+.newform { display: flex; gap: 10px; align-items: center; background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 24px; }
+.newform input { flex: 1; }
+.newform .err { color: var(--danger); font-size: 12px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px; cursor: pointer; transition: border-color .15s, transform .1s; min-height: 130px;
+  display: flex; flex-direction: column; }
+.card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.card-top { display: flex; justify-content: space-between; align-items: center; }
+.card-name { font-weight: 600; font-size: 15px; }
+.card-del { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; }
+.card-del:hover { color: var(--danger); }
+.swatches { flex: 1; display: flex; flex-wrap: wrap; gap: 5px; align-content: flex-start; margin: 14px 0; }
+.chip { width: 14px; height: 14px; border-radius: 4px; }
+.card-foot { font-size: 12px; color: var(--muted); }
+.muted { color: var(--muted); font-size: 13px; }
+
+.backbtn { background: transparent; border: 1px solid var(--line); }
+.backbtn:hover { border-color: var(--accent); }
+.proj-name { font-weight: 600; }
+
+.empty { color: var(--muted); font-size: 13px; padding: 16px; }
+.status { font-size: 11px; color: var(--muted); }
+.addbar { display: flex; gap: 8px; padding: 8px 16px 16px; }
+.addbar select { flex: 1; }
+
+/* ---- outliner add-component panel ---- */
+.outliner-add {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) auto;
+  gap: 6px; padding: 10px 12px 12px;
+  border-top: 1px solid var(--line);
+  position: sticky; bottom: 0; background: var(--panel);
+}
+.outliner-add select { min-width: 0; font-size: 12px; }
+.outliner-add .component-asset-select:first-child {
+  grid-column: 1 / 3;
+}
+.icon-btn { padding: 7px 13px; font-size: 16px; line-height: 1; }
+
+/* ---- row-actions keyboard hint ---- */
+.row-actions { display: flex; align-items: center; gap: 10px; padding: 10px 16px; }
+.key-hint {
+  font-size: 10px; color: var(--muted);
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 4px; padding: 1px 5px;
+  font-family: monospace;
+}
+
+/* ---- 3D floating component labels (drei Html) ---- */
+.comp-label {
+  font: 10px/1 "Inter", system-ui, sans-serif;
+  color: rgba(220, 225, 235, 0.55);
+  background: rgba(0, 0, 0, 0.4);
+  padding: 2px 7px; border-radius: 3px;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  user-select: none;
+}
+.comp-label.sel {
+  color: #fff;
+  background: rgba(76, 141, 255, 0.5);
+  border-color: rgba(76, 141, 255, 0.7);
+}
+:root[data-theme="light"] .comp-label {
+  color: rgba(20, 25, 35, 0.7);
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+:root[data-theme="light"] .comp-label.sel {
+  color: #1a3a7f;
+  background: rgba(219, 231, 255, 0.92);
+  border-color: #2563eb;
+}
+
+/* ---- physics panel (paraxial simulation results) ---- */
+.physics-panel {
+  border-top: 1px solid var(--line);
+  padding-bottom: 16px;
+}
+.physics-block {
+  padding: 4px 16px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.physics-seg-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .6px; color: var(--accent); padding: 8px 0 4px;
+}
+.physics-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12px; padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+.physics-row:last-child { border-bottom: none; }
+.physics-row.final { padding-top: 8px; font-weight: 600; }
+.physics-label { color: var(--muted); flex: 1; }
+.physics-value { font-variant-numeric: tabular-nums; color: var(--text); }
+.physics-table {
+  width: 100%; border-collapse: collapse; font-size: 11px; margin: 6px 0;
+}
+.physics-table th {
+  text-align: left; color: var(--muted); font-weight: 400;
+  padding: 3px 4px; border-bottom: 1px solid var(--line);
+}
+.physics-table td {
+  padding: 5px 4px; vertical-align: top;
+  border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums;
+}
+.physics-table tr:last-child td { border-bottom: none; }
+.physics-table .row-lens td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.physics-table .el-name { display: block; font-weight: 500; }
+.physics-table .el-type { display: block; font-size: 9px; color: var(--muted); margin-top: 1px; }
+.physics-table .sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+/* ---- 3D pin annotation labels ---- */
+
+/* Added:
+   Toolbar hint shown while Add pin mode is active.
+*/
+.pin-mode-hint {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Added:
+   Floating HTML label attached to each 3D pin.
+   This label is rendered with drei's <Html /> component.
+*/
+.pin-label {
+  min-width: 120px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(20, 24, 32, 0.88);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.3;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+  user-select: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+/* Added:
+   Light theme version of the floating pin label.
+*/
+:root[data-theme="light"] .pin-label {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text);
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 6px 18px rgba(20, 25, 35, 0.18);
+}
+
+/* Added:
+   Highlight the selected pin label.
+*/
+.pin-label.selected {
+  outline: 2px solid var(--accent);
+}
+
+/* Added:
+   Main label text of the pin.
+*/
+.pin-label-title {
+  font-weight: 700;
+  margin-bottom: 3px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Added:
+   Author name shown under the pin label.
+*/
+.pin-label-meta {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 11px;
+}
+
+/* Added:
+   Light theme version of the author name.
+*/
+:root[data-theme="light"] .pin-label-meta {
+  color: var(--muted);
+}
+
+/* Added:
+   Created time shown under the author name.
+*/
+.pin-label-time {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+/* Added:
+   Light theme version of the created time.
+*/
+:root[data-theme="light"] .pin-label-time {
+  color: var(--muted);
+}
+
+/* Added:
+   Delete button shown only when the pin is selected.
+*/
+.pin-delete-button {
+  border: none;
+  border-radius: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+}
+
+.pin-action-buttons {
+  display: flex;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.pin-action-buttons button {
+  flex: 1;
+}
+
+.pin-edit-button {
+  border: none;
+  border-radius: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+}
+
+.pin-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.pin-editor-dialog {
+  width: min(460px, calc(100vw - 32px));
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+}
+
+.pin-editor-title {
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.pin-editor-dialog textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 140px;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.pin-editor-hint {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.pin-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* Added:
+   Hover state for the pin delete button.
+*/
+.pin-delete-button:hover {
+  filter: brightness(1.08);
+}
+
+/* ---- pin creation controls ---- */
+
+/* Added:
+   User name input for newly created pins.
+*/
+.pin-user-input {
+  width: 120px;
+  height: 32px;
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+/* Added:
+   Container for pin color selection buttons.
+*/
+.pin-color-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Added:
+   Small color button used to choose the color of the next pin.
+*/
+.pin-color-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+/* Added:
+   Highlight the currently selected pin color.
+*/
+.pin-color-btn.selected {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* Added:
+   Visible color dot inside the color button.
+*/
+.pin-color-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: block;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+/* Added:
+   Light theme border for the color dot.
+*/
+:root[data-theme="light"] .pin-color-dot {
+  border-color: rgba(0, 0, 0, 0.25);
+}
+
+/* ---- login ---- */
+
+.login-page {
+  position: relative;
+  box-sizing: border-box;
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 36px;
+  width: 100%;
+  padding: 54px 44px;
+  overflow: hidden;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background:
+    radial-gradient(circle at 50% 10%, rgba(35, 221, 163, 0.22), transparent 30%),
+    radial-gradient(circle at 50% 78%, rgba(47, 95, 150, 0.12), transparent 38%),
+    linear-gradient(180deg, #f9fbfd 0%, #edf3f8 48%, #e5ebf2 100%);
+  color: #17212f;
+}
+
+.login-logo {
+  width: 100%;
+  display: grid;
+  place-items: center;
+  padding: 0 18px;
+}
+
+.login-logo img {
+  display: block;
+  width: min(860px, 100%);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 22px 36px rgba(20, 184, 138, 0.2));
+}
+
+.login-form {
+  box-sizing: border-box;
+  width: min(430px, 100%);
+  padding: 28px;
+  border: 1px solid rgba(132, 151, 176, 0.34);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow:
+    0 18px 44px rgba(23, 33, 47, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(18px) saturate(1.25);
+}
+
+.login-form label {
+  display: block;
+  margin-bottom: 10px;
+  color: #445469;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.login-form input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid #adbbcc;
+  border-radius: 6px;
+  background: rgba(251, 253, 255, 0.95);
+  color: #17212f;
+  font-size: 17px;
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.login-form input:focus {
+  border-color: #1ed49b;
+  background: #fff;
+  box-shadow:
+    0 0 0 4px rgba(34, 220, 162, 0.18),
+    0 10px 24px rgba(25, 120, 94, 0.12);
+}
+
+.login-form button {
+  width: 100%;
+  height: 48px;
+  margin-top: 18px;
+  border: 0;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #23dda3, #2ff0b8);
+  color: #06140f;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow:
+    0 14px 28px rgba(35, 221, 163, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.36);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+.login-form button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+  box-shadow:
+    0 18px 34px rgba(35, 221, 163, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.login-form button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow:
+    0 10px 22px rgba(35, 221, 163, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.login-form button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.login-form p,
+.login-status {
+  margin: 14px 0 0;
+  color: #b42318;
+  font-size: 14px;
+}
+
+.login-status {
+  color: #445469;
+}
+
+/* Added:
+   Inline panel shown only while Add pin mode is active.
+*/
+.pin-add-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+}

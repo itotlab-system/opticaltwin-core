@@ -1,0 +1,90 @@
+import os
+import re
+
+
+_LEGACY_COMPONENT_REF = re.compile(
+    r"(?P<prefix>@(?:\.\./)+components/)(?P<component>[A-Za-z0-9_-]+)\.usda@"
+)
+_LEGACY_COMPONENT_ASSET_PATH = re.compile(
+    r"(?P<prefix>(?:^|.*/)components/)(?P<component>[A-Za-z0-9_-]+)\.usda$"
+)
+
+
+def get_component_name(asset_or_component_name):
+    """Return a component path relative to components/ from an asset id."""
+    name = asset_or_component_name.replace("\\", "/").strip("/")
+    parts = name.split("/")
+    if name.endswith(".usda"):
+        if len(parts) >= 2 and parts[-1] in ("hi.usda", "lo.usda"):
+            return "/".join(parts[:-1])
+        parts[-1] = os.path.splitext(parts[-1])[0]
+        return "/".join(parts)
+    return name
+
+
+def get_component_usda_path(lib_dir, component_name, render_mode="lo"):
+    component_name = get_component_name(component_name)
+    return os.path.join(lib_dir, component_name, f"{render_mode}.usda")
+
+
+def get_relative_component_usda_path(lib_dir, component_name, base_dir, render_mode="lo"):
+    return os.path.relpath(
+        get_component_usda_path(lib_dir, component_name, render_mode),
+        base_dir,
+    ).replace(os.sep, "/")
+
+
+def normalize_component_asset_ref(asset_ref, render_mode="lo"):
+    """Return a component reference path using components/<name>/<mode>.usda."""
+    path = asset_ref.replace("\\", "/")
+    return _LEGACY_COMPONENT_ASSET_PATH.sub(
+        lambda m: f"{m.group('prefix')}{m.group('component')}/{render_mode}.usda",
+        path,
+    )
+
+
+def normalize_component_references_in_usda(path, render_mode="lo"):
+    """Update legacy components/<name>.usda references to components/<name>/<mode>.usda."""
+    with open(path, "r") as f:
+        original = f.read()
+
+    updated = _LEGACY_COMPONENT_REF.sub(
+        lambda m: f"{m.group('prefix')}{m.group('component')}/{render_mode}.usda@",
+        original,
+    )
+    if updated == original:
+        return False
+
+    with open(path, "w") as f:
+        f.write(updated)
+    return True
+
+
+def set_render_mode(stage, component_path, mode):
+    from pxr import UsdGeom, Sdf
+
+    if mode not in ("hi", "lo"):
+        raise ValueError("mode must be 'hi' or 'lo'")
+
+    component_prim = stage.GetPrimAtPath(component_path)
+    hi_prim = stage.GetPrimAtPath(f"{component_path}/hi")
+    lo_prim = stage.GetPrimAtPath(f"{component_path}/lo")
+
+    if not component_prim.IsValid():
+        raise ValueError(f"component not found: {component_path}")
+    if not hi_prim.IsValid():
+        raise ValueError(f"hi prim not found: {component_path}/hi")
+    if not lo_prim.IsValid():
+        raise ValueError(f"lo prim not found: {component_path}/lo")
+
+    if mode == "hi":
+        UsdGeom.Imageable(hi_prim).MakeVisible()
+        UsdGeom.Imageable(lo_prim).MakeInvisible()
+    else:
+        UsdGeom.Imageable(hi_prim).MakeInvisible()
+        UsdGeom.Imageable(lo_prim).MakeVisible()
+
+    component_prim.CreateAttribute(
+        "optics:renderMode",
+        Sdf.ValueTypeNames.String
+    ).Set(mode)

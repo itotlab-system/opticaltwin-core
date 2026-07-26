@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpticalTwin Viewer</title>
+  <script type="module"
+    src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+  <style>
+    :root { --bg: #14161a; --panel: #1e2229; --text: #e6e8eb; --accent: #2ea043; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    header { padding: 14px 20px; background: var(--panel); display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    header .sub { font-size: 12px; opacity: 0.6; }
+    select, button { background: #2b313a; color: var(--text); border: 1px solid #3a414c; border-radius: 6px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+    model-viewer { width: 100vw; height: calc(100vh - 56px); background: radial-gradient(circle at 50% 40%, #20242b, #0d0f12); }
+    .hint { position: absolute; bottom: 14px; left: 20px; font-size: 12px; opacity: 0.5; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>OpticalTwin</h1>
+    <span class="sub">optical setup &mdash; layout &amp; planning (no physics)</span>
+    <label>Setup:
+      <select id="pick">
+        <option value="slm_imaging.glb">SLM imaging setup</option>
+        <option value="optical_bench.glb">Optical bench (demo)</option>
+      </select>
+    </label>
+    <button id="spin">Toggle auto-rotate</button>
+    <button id="reset">Reset view</button>
+  </header>
+
+  <model-viewer id="mv"
+    src="slm_imaging.glb"
+    camera-controls
+    auto-rotate
+    interaction-prompt="none"
+    shadow-intensity="1"
+    exposure="1.1"
+    camera-orbit="45deg 65deg auto"
+    min-field-of-view="5deg">
+  </model-viewer>
+  <div class="hint">Drag to orbit &bull; scroll to zoom &bull; right-drag to pan</div>
+
+  <script>
+    const mv = document.getElementById('mv');
+    document.getElementById('pick').addEventListener('change', e => {
+      mv.src = e.target.value;
+    });
+    document.getElementById('spin').addEventListener('click', () => {
+      mv.autoRotate = !mv.autoRotate;
+    });
+    document.getElementById('reset').addEventListener('click', () => {
+      mv.cameraOrbit = '45deg 65deg auto';
+      mv.fieldOfView = 'auto';
+    });
+  </script>
+</body>
+</html>

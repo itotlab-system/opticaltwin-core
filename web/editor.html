@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpticalTwin Editor</title>
+  <script type="module"
+    src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+  <style>
+    :root { --bg:#14161a; --panel:#1e2229; --row:#23272f; --text:#e6e8eb; --muted:#8b929c; --accent:#2ea043; --line:#333a44; }
+    * { box-sizing:border-box; }
+    body { margin:0; height:100vh; display:flex; flex-direction:column; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); }
+    header { padding:10px 18px; background:var(--panel); display:flex; gap:14px; align-items:center; flex-wrap:wrap; border-bottom:1px solid var(--line); }
+    header h1 { font-size:15px; margin:0; font-weight:600; }
+    header .sub { font-size:11px; color:var(--muted); }
+    select,button { background:#2b313a; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font-size:13px; cursor:pointer; }
+    button:hover { border-color:var(--accent); }
+    #main { flex:1; display:flex; min-height:0; }
+    #left { width:430px; overflow-y:auto; border-right:1px solid var(--line); padding:12px; }
+    model-viewer { flex:1; background:radial-gradient(circle at 50% 40%,#20242b,#0d0f12); }
+    .comp { background:var(--row); border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:8px; }
+    .comp .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .comp .nm { font-weight:600; font-size:13px; }
+    .comp .ty { font-size:11px; color:var(--muted); }
+    .comp .del { background:none; border:none; color:var(--muted); cursor:pointer; font-size:14px; padding:2px 6px; }
+    .comp .del:hover { color:#e5534b; }
+    .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+    .fld label { display:block; font-size:10px; color:var(--muted); margin-bottom:2px; }
+    .fld input { width:100%; background:#171a20; color:var(--text); border:1px solid var(--line); border-radius:5px; padding:5px; font-size:12px; }
+    .fld input:focus { outline:none; border-color:var(--accent); }
+    h2 { font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:14px 0 8px; }
+    .addbar { display:flex; gap:6px; }
+    .addbar select { flex:1; }
+    .dist { font-size:11px; color:var(--muted); margin:-2px 0 8px 2px; }
+    #status { font-size:11px; color:var(--muted); margin-left:auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>OpticalTwin</h1>
+    <span class="sub">layout editor &mdash; USD is the source of truth</span>
+    <label style="font-size:13px">Project:
+      <select id="proj"></select>
+    </label>
+    <button id="reset">Reset view</button>
+    <span id="status"></span>
+  </header>
+
+  <div id="main">
+    <div id="left">
+      <h2>Components</h2>
+      <div id="list"></div>
+      <h2>Add component</h2>
+      <div class="addbar">
+        <select id="lib"></select>
+        <button id="add">+ Add</button>
+      </div>
+    </div>
+    <model-viewer id="mv" camera-controls interaction-prompt="none"
+      shadow-intensity="1" exposure="1.1"
+      camera-orbit="40deg 60deg auto" min-field-of-view="5deg"></model-viewer>
+  </div>
+
+  <script>
+    const api = (p, opt) => fetch('/api/' + p, opt).then(r => r.json());
+    const mv = document.getElementById('mv');
+    const projSel = document.getElementById('proj');
+    const libSel = document.getElementById('lib');
+    const listEl = document.getElementById('list');
+    const statusEl = document.getElementById('status');
+    let current = null, comps = [];
+
+    function setStatus(t) { statusEl.textContent = t; }
+    function reloadModel() { mv.src = `/model/${current}.glb?t=` + Date.now(); }
+
+    async function loadProjects() {
+      const { projects } = await api('projects');
+      projSel.innerHTML = projects.map(p => `<option>${p}</option>`).join('');
+      if (projects.length) { current = projects[0]; await loadProject(); }
+    }
+
+    async function loadProject() {
+      const data = await api('projects/' + current);
+      comps = data.components;
+      libSel.innerHTML = data.library
+        .map(a => `<option value="${a}">${a.replace('.usda','')}</option>`).join('');
+      renderList();
+      reloadModel();
+      setStatus(`${comps.length} components`);
+    }
+
+    function renderList() {
+      // sort by X so the beam order reads top-to-bottom
+      const sorted = [...comps].sort((a,b)=>a.x-b.x);
+      listEl.innerHTML = '';
+      sorted.forEach((c, i) => {
+        const div = document.createElement('div');
+        div.className = 'comp';
+        div.innerHTML = `
+          <div class="top">
+            <span><span class="nm">${c.name}</span> <span class="ty">${c.type}</span></span>
+            <button class="del" title="remove">&times;</button>
+          </div>
+          <div class="grid">
+            ${['x','y','z','rotZ'].map(k => `
+              <div class="fld"><label>${k==='rotZ'?'rot Z°':k.toUpperCase()+' mm'}</label>
+              <input type="number" step="${k==='rotZ'?5:5}" data-k="${k}" value="${c[k]}"></div>`).join('')}
+          </div>`;
+        const prev = sorted[i-1];
+        if (prev) {
+          const d = Math.hypot(c.x-prev.x, c.y-prev.y, c.z-prev.z);
+          const dd = document.createElement('div');
+          dd.className = 'dist';
+          dd.textContent = `↕ ${d.toFixed(1)} mm from ${prev.name}`;
+          div.querySelector('.grid').after(dd);
+        }
+        div.querySelectorAll('input').forEach(inp => {
+          inp.addEventListener('change', () => saveComp(c, div));
+        });
+        div.querySelector('.del').addEventListener('click', () => delComp(c));
+        listEl.appendChild(div);
+      });
+    }
+
+    async function saveComp(c, div) {
+      const body = {};
+      div.querySelectorAll('input').forEach(inp => body[inp.dataset.k] = parseFloat(inp.value));
+      Object.assign(c, body);
+      setStatus('saving ' + c.name + '…');
+      await api(`projects/${current}/components/${c.name}`,
+        { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+      reloadModel();
+      renderList();
+      setStatus('saved ' + c.name);
+    }
+
+    async function delComp(c) {
+      if (!confirm(`Remove ${c.name}?`)) return;
+      await api(`projects/${current}/delete/${c.name}`, { method:'POST' });
+      await loadProject();
+    }
+
+    document.getElementById('add').addEventListener('click', async () => {
+      const asset = libSel.value;
+      const r = await api(`projects/${current}/add`,
+        { method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({ asset, x:0, y:0 }) });
+      setStatus('added ' + r.name);
+      await loadProject();
+    });
+
+    projSel.addEventListener('change', e => { current = e.target.value; loadProject(); });
+    document.getElementById('reset').addEventListener('click', () => {
+      mv.cameraOrbit = '40deg 60deg auto'; mv.fieldOfView = 'auto';
+    });
+
+    loadProjects();
+  </script>
+</body>
+</html>

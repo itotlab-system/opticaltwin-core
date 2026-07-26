@@ -1,0 +1,40 @@
+cff-version: 1.2.0
+message: "If you use OpticalTwin in your research, please cite it as below."
+title: "OpticalTwin: a browser-based 3D viewer and editor for optical laboratory setups"
+abstract: >-
+  OpticalTwin is a shared, server-hosted web application for viewing, arranging,
+  and discussing optical laboratory setups in 3D. Setups are stored as OpenUSD
+  scenes (millimetre units, Z-up, optical axis along +X) and edited in the
+  browser through a React Three Fiber client backed by a Python/Flask server.
+  Its scope is layout and planning — component fit, spacing, and alignment —
+  rather than optical physics simulation.
+type: software
+authors:
+  - family-names: Kumano
+    given-names: Kai
+    affiliation: "Chiba University, Graduate School of Science and Engineering"
+  - family-names: Yoshino
+    given-names: Kota
+    affiliation: "Chiba University, Graduate School of Science and Engineering"
+  - family-names: Goto
+    given-names: Masato
+    affiliation: "Chiba University, Graduate School of Science and Engineering"
+  - family-names: Matsuo
+    given-names: Yuto
+    affiliation: "Chiba University, Graduate School of Science and Engineering"
+license: Apache-2.0
+repository-code: "https://github.com/itotlab-system/opticaltwin-core"
+url: "https://github.com/itotlab-system/opticaltwin-core"
+version: 1.0.0
+date-released: 2026-07-26
+keywords:
+  - optics
+  - optical setup
+  - laboratory automation
+  - OpenUSD
+  - digital twin
+  - 3D visualization
+  - React Three Fiber
+# After the first Zenodo release, uncomment and paste the *concept* DOI
+# (the one that always points at the newest version):
+# doi: 10.5281/zenodo.XXXXXXX
