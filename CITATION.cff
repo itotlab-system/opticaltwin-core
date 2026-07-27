@@ -12,19 +12,19 @@ type: software
 authors:
   - family-names: Kumano
     given-names: Kai
-    affiliation: "Chiba University, Graduate School of Science and Engineering"
+    affiliation: "Ito–Shimobaba–Wang Laboratory, Graduate School of Engineering, Chiba University"
   - family-names: Yoshino
     given-names: Kota
-    affiliation: "Chiba University, Graduate School of Science and Engineering"
+    affiliation: "Ito–Shimobaba–Wang Laboratory, Graduate School of Engineering, Chiba University"
   - family-names: Goto
     given-names: Masato
-    affiliation: "Chiba University, Graduate School of Science and Engineering"
+    affiliation: "Ito–Shimobaba–Wang Laboratory, Graduate School of Engineering, Chiba University"
   - family-names: Matsuo
     given-names: Yuto
-    affiliation: "Chiba University, Graduate School of Science and Engineering"
+    affiliation: "Ito–Shimobaba–Wang Laboratory, Graduate School of Engineering, Chiba University"
   - family-names: Fujima
     given-names: Yudai
-    affiliation: "Chiba University, Graduate School of Science and Engineering"
+    affiliation: "Ito–Shimobaba–Wang Laboratory, Graduate School of Engineering, Chiba University"
 license: Apache-2.0
 repository-code: "https://github.com/itotlab-system/opticaltwin-core"
 url: "https://github.com/itotlab-system/opticaltwin-core"
@@ -42,3 +42,27 @@ keywords:
 # place across releases; each version also gets its own DOI (v1.0.0 is
 # 10.5281/zenodo.21594828) which is only needed to pin an exact version.
 doi: 10.5281/zenodo.21594827
+
+# ---------------------------------------------------------------------------
+# When a paper about OpticalTwin is published, fill this in and uncomment it.
+# GitHub's "Cite this repository" button then offers the paper's APA/BibTeX
+# instead of the software's, while everything above stays as the record of the
+# software itself. Also change `message:` to point at the paper.
+#
+# Citation counts are NEVER transferred between DOIs: the citations already on
+# the Zenodo DOI stay there and the paper starts its own tally. To keep the two
+# linked, cite the concept DOI from inside the paper and add the paper's DOI to
+# the Zenodo record as a related identifier (IsDescribedBy / IsSupplementTo).
+# `python scripts/citations.py --total <paper-doi>` sums them locally.
+#
+# preferred-citation:
+#   type: article
+#   title: "..."
+#   authors:
+#     - family-names: Kumano
+#       given-names: Kai
+#       affiliation: "Ito–Shimobaba–Wang Laboratory, Graduate School of Engineering, Chiba University"
+#   journal: "..."
+#   year: 2027
+#   doi: 10.xxxx/xxxxx
+# ---------------------------------------------------------------------------

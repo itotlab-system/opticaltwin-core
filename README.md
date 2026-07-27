@@ -149,8 +149,8 @@ See `CITATION.cff` for machine-readable metadata — GitHub renders it as a
 
 ## Acknowledgements
 
-Developed at the Ito–Shimobaba–Wang Laboratory (ITOT lab.), Graduate School of
-Science and Engineering, Chiba University.
+Developed at the [Ito–Shimobaba–Wang Laboratory (ITOT lab.)](https://sites.google.com/view/ito-shimobaba-lab/home),
+Graduate School of Engineering, Chiba University.
 
 ---
 
@@ -196,3 +196,8 @@ TLS 終端のリバースプロキシを前段に置いてください。
 
 研究で使用した場合は、上記 Citation 節の形式、または `CITATION.cff` を参照して
 引用してください。DOI は **10.5281/zenodo.21594827** です（常に最新版を指します）。
+
+## 謝辞
+
+千葉大学 大学院工学研究院 [伊藤・下馬場・王 研究室（ITOT lab.）](https://sites.google.com/view/ito-shimobaba-lab/home)
+にて開発されました。
