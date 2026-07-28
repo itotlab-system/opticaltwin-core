@@ -1,5 +1,10 @@
 cff-version: 1.2.0
-message: "If you use OpticalTwin in your research, please cite it as below."
+# CFF 1.2.0 has no per-author contribution field, so the equal-contribution
+# statement rides along in `message` -- GitHub's "Cite this repository" widget
+# shows it directly above the generated APA/BibTeX.
+message: >-
+  If you use OpticalTwin in your research, please cite it as below.
+  All four authors contributed equally to this work.
 title: "OpticalTwin: a browser-based 3D viewer and editor for optical laboratory setups"
 abstract: >-
   OpticalTwin is a shared, server-hosted web application for viewing, arranging,
@@ -21,9 +26,6 @@ authors:
     affiliation: "Ito–Shimobaba–Wang Laboratory, Graduate School of Engineering, Chiba University"
   - family-names: Matsuo
     given-names: Yuto
-    affiliation: "Ito–Shimobaba–Wang Laboratory, Graduate School of Engineering, Chiba University"
-  - family-names: Fujima
-    given-names: Yudai
     affiliation: "Ito–Shimobaba–Wang Laboratory, Graduate School of Engineering, Chiba University"
 license: Apache-2.0
 repository-code: "https://github.com/itotlab-system/opticaltwin-core"
