@@ -30,10 +30,13 @@ export interface Component {
   x: number;
   y: number;
   z: number;
+  rotX: number;
+  rotY: number;
   rotZ: number;
   modelRotation?: [number, number, number];
   rotationCenter?: [number, number, number];
-  attrs: Record<string, number | string>;
+  // optics:* attributes as authored. Booleans occur too (laserOn).
+  attrs: Record<string, number | string | boolean>;
   asset?: string | null;
   cadDerived?: boolean;
   renderMode?: "hi" | "lo";
@@ -52,12 +55,39 @@ export interface Board {
   holes: [number, number][];
   holeZ: number | null;
   bbox: { min: [number, number, number]; max: [number, number, number] } | null;
+  sizeX: number;
+  sizeY: number;
+  minSizeX: number;
+  minSizeY: number;
+  spacing: number;
+  centerX: number;
+  centerY: number;
+  extentXNegative: number;
+  extentXPositive: number;
+  extentYNegative: number;
+  extentYPositive: number;
+  model?: Component | null;
 }
 
 export interface BeamSegment {
   pts: [number, number, number][];
   wavelength: number;  // nm — drives color
   intensity?: number;  // relative optical power (0..1)
+  // Identity of this leg, from the tracer. `key` is stable across component
+  // moves, so a drawn width stays attached to the right stretch of beam.
+  key?: string;
+  from?: string | null;   // component the beam left ("*"/null = open end)
+  to?: string | null;     // component it reached
+  wIn?: number;           // drawn full width in mm entering the leg
+  wOut?: number;          // drawn full width in mm leaving it
+  // A pinched leg: where along it the beam is narrowest (0..1) and how wide it
+  // is there. Present only for a leg drawn as a focus rather than a wedge.
+  waistAt?: number;
+  waistW?: number;
+  // How far the beam is *drawn* along this leg. Absent = the real gap between
+  // the two parts. Sketch only: it moves nothing.
+  lengthMm?: number;
+  shaped?: boolean;       // true once someone has drawn this leg
 }
 
 export interface PinAnnotation { // add PIN information
@@ -72,6 +102,16 @@ export interface PinAnnotation { // add PIN information
   createdAt: string;
 }
 
+// A set of components moved and rotated as one rigid body (PowerPoint-style
+// grouping). Stored in the USD layer as the optics:groups JSON attribute; a
+// component belongs to at most one group and groups do not nest.
+export interface ComponentGroup {
+  id: string;
+  name: string;
+  members: string[];   // component names
+  color?: string;      // outline color in the viewport / outliner
+}
+
 // A beamPath node: either a plain component name (auto-follows) or a dict
 // that carries an optional pin coordinate (stays put when component moves).
 export type BeamNode = string | { ref: string; pin?: [number, number, number] };
@@ -82,38 +122,25 @@ export interface ProjectData {
   beam: BeamSegment[];      // resolved segments (pts + wavelength)
   beamPath: BeamNode[][];   // authored node sequences (component names / pins)
   board: Board;
+  boardModels?: string[];
   library: string[];
   libraryPreviews?: Record<string, Component>;
   renderMode?: "hi" | "lo";
   pins?: PinAnnotation[]; // pin information, ?:Whether it's there or not
+  groups?: ComponentGroup[];
+  canUndo?: boolean;        // whether the project's history has a step to rewind
+  canRedo?: boolean;
 }
 
-export interface BeamElementStat {
+// One component's new pose in a batch move.
+export interface ComponentUpdate {
   name: string;
-  type: string;
-  w_in_mm: number;        // beam radius arriving at this element
-  // lens-only fields (present when type is lens / cylindrical_lens / eyepiece)
-  w_out_mm?: number;              // beam radius just after the lens
-  focal_length_mm?: number;
-  z_R_after_mm?: number;          // new Rayleigh range after this lens
-  z_waist_mm?: number;            // distance to next focus (positive = downstream)
-  w_waist_mm?: number;            // beam radius at that focus
-  divergence_after_mrad?: number; // half-angle divergence after this lens
-}
-
-export interface ParaxialInfo {
-  w0_mm: number;                  // fiber input waist radius
-  z_R0_mm: number;                // Rayleigh range at fiber tip
-  divergence_input_mrad: number;  // half-angle divergence at input
-  w_final_mm: number;             // beam radius at last element (detector)
-  elements: BeamElementStat[];
-}
-
-export interface ParaxialSegment {
-  pts: [number, number, number][];
-  widths: number[];    // beam radius in mm at each pt
-  wavelength: number;  // nm
-  info: ParaxialInfo;
+  x: number;
+  y: number;
+  z: number;
+  rotX: number;
+  rotY: number;
+  rotZ: number;
 }
 
 export interface ProjectSummary {

@@ -58,6 +58,30 @@ def _create_project_from_clone(name, source_name, label, overwrite=False):
     return setup_path
 
 
+def duplicate_project(source_name, name, projects_dir=None, overwrite=False):
+    """Copy a whole project folder to a new name (#155).
+
+    Everything comes along -- setup.usda, notes.md, anything else a team put
+    in the folder. Safe for the same reason CLONE_TEMPLATES is: source and
+    copy sit at the same depth, so the relative `../../components/...`
+    references in setup.usda resolve unchanged.
+
+    `projects_dir` overrides PROJECTS_DIR so callers (the server, tests) can
+    point at their own tree.
+    """
+    projects_dir = projects_dir or PROJECTS_DIR
+    source_dir = os.path.join(projects_dir, source_name)
+    if not os.path.exists(os.path.join(source_dir, "setup.usda")):
+        raise FileNotFoundError(f"Project '{source_name}' not found.")
+    proj_dir = os.path.join(projects_dir, name)
+    setup_path = os.path.join(proj_dir, "setup.usda")
+    if os.path.exists(setup_path) and not overwrite:
+        raise FileExistsError(f"Project '{name}' already exists.")
+    shutil.copytree(source_dir, proj_dir, dirs_exist_ok=True)
+    print(f"  copied {source_name} -> {name}: {setup_path}")
+    return setup_path
+
+
 def create_project(name, template, overwrite=False):
     if template in CLONE_TEMPLATES:
         source_name, label = CLONE_TEMPLATES[template]

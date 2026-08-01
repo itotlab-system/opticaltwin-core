@@ -13,12 +13,16 @@ Examples:
     python cad_importer.py cad/mirror/M1.step --type mirror --lod both
 
     # Rod: five CAD Mesh parts in hi, one metallic Cylinder in lo
-    python cad_importer.py cad/Mount/ER1.5-Step.step --type rod --lod both \
+    python cad_importer.py cad/Rod/ER1.5-Step.step --type rod --lod both \
         --source-forward-axis +Y
 
     # Generate every Rod STEP into components/Rod/<STEP name>/
     python cad_importer.py cad/Rod --type rod --lod both \
         --source-forward-axis +Y
+
+    # Generate every Laser STEP; each CAD model's longitudinal axis is detected
+    python cad_importer.py cad/Laser --type laser --lod both \
+        --source-forward-axis auto
 """
 
 import argparse
@@ -64,7 +68,7 @@ from pxr import Gf, Sdf, Usd, UsdGeom
 
 ROOT_DIR = Path(__file__).resolve().parent
 
-DEFAULT_COMPONENT_NAME = "LA4380-A-Step"
+DEFAULT_COMPONENT_NAME = "Lens/LA1417-AB-Step"
 DEFAULT_DISPLAY_COLOR = (0.4, 0.7, 1.0)
 FORWARD_AXES = ("+X", "-X", "+Y", "-Y", "+Z", "-Z")
 LOD_NAMES = ("hi", "lo")
@@ -118,6 +122,16 @@ class SourceRegion:
 class LensProfile:
     kind: str
     flat_side: str | None
+
+
+@dataclass(frozen=True)
+class LaserEmissionProfile:
+    offset_x: float
+    front_x: float
+    back_x: float
+    center_y: float
+    center_z: float
+    diameter: float
 
 
 def usd_identifier(value: str) -> str:
@@ -1648,8 +1662,13 @@ def simplify_surface_regions(
 
 def lo_proxy_kind(component_type: str, requested: str) -> str:
     """Resolve the automatic proxy primitive for one component type."""
-    del component_type
-    return "primitive" if requested == "auto" else requested
+    if requested != "auto":
+        return requested
+    # Mounts need to keep their holes, knobs, and base profile in the low LOD;
+    # a single bounds primitive no longer resembles the usable hardware.
+    if component_type.lower() == "mount":
+        return "mesh"
+    return "primitive"
 
 
 def set_gprim_appearance(
@@ -1705,6 +1724,98 @@ def analyze_lens_profile(
     return LensProfile("plano", "both")
 
 
+def analyze_cylindrical_laser_emission(
+    mesh_parts: list[MeshPart],
+    source_forward_axis: str,
+    source_origin: tuple[float, float, float],
+    source_roll_deg: float,
+) -> LaserEmissionProfile:
+    """Locate the output barrel and its recessed on-axis emission surface."""
+    oriented_parts = [
+        [
+            orient_point(
+                point,
+                source_forward_axis,
+                source_origin,
+                source_roll_deg,
+            )
+            for point in part.points
+        ]
+        for part in mesh_parts
+        if part.points
+    ]
+    all_points = [
+        point for part_points in oriented_parts for point in part_points
+    ]
+    _, overall_maximum = oriented_bounds(all_points, "+X")
+    tolerance = max(
+        (overall_maximum[0] - min(point[0] for point in all_points)) * 0.01,
+        0.5,
+    )
+    candidates = []
+    for points in oriented_parts:
+        minimum, maximum = oriented_bounds(points, "+X")
+        size_x = maximum[0] - minimum[0]
+        size_y = maximum[1] - minimum[1]
+        size_z = maximum[2] - minimum[2]
+        transverse = max(size_y, size_z)
+        if transverse < 5.0 or size_x < transverse * 3.0:
+            continue
+        if abs(size_y - size_z) > transverse * 0.15:
+            continue
+        if abs(maximum[0] - overall_maximum[0]) > tolerance:
+            continue
+        candidates.append((
+            size_x / transverse,
+            maximum[0],
+            minimum[0],
+            (minimum[1] + maximum[1]) / 2.0,
+            (minimum[2] + maximum[2]) / 2.0,
+            transverse,
+        ))
+    if not candidates:
+        raise ValueError("出射用の円筒形Laserヘッドを特定できませんでした")
+    (
+        _,
+        front_x,
+        back_x,
+        center_y,
+        center_z,
+        diameter,
+    ) = max(candidates)
+
+    # A hollow output barrel reaches the outer front plane only at its lip.
+    # Prefer the closest mesh vertex to the barrel axis in the front quarter;
+    # that vertex lies on the recessed emitting surface.  A plain capped
+    # cylinder has no such inner vertex and correctly falls back to its tip.
+    head_length = front_x - back_x
+    axial_points = []
+    for point in all_points:
+        radial_distance = math.hypot(
+            point[1] - center_y,
+            point[2] - center_z,
+        )
+        if (
+            point[0] >= front_x - min(head_length * 0.25, 15.0)
+            and radial_distance <= diameter * 0.25
+        ):
+            axial_points.append((radial_distance, -point[0], point[0]))
+    offset_x = front_x
+    if axial_points:
+        recessed_x = min(axial_points)[2]
+        if recessed_x < front_x - diameter * 0.05:
+            offset_x = recessed_x
+
+    return LaserEmissionProfile(
+        offset_x,
+        front_x,
+        back_x,
+        center_y,
+        center_z,
+        diameter,
+    )
+
+
 def add_primitive_transform(
     gprim,
     translate: tuple[float, float, float],
@@ -1716,11 +1827,95 @@ def add_primitive_transform(
         xformable.AddScaleOp().Set(Gf.Vec3d(*scale))
 
 
-def add_zero_xyz_rotation(xformable: UsdGeom.Xformable) -> None:
-    """Author editable XYZ rotations with neutral initial values."""
-    xformable.AddRotateXOp().Set(0.0)
-    xformable.AddRotateYOp().Set(0.0)
+def add_zero_xyz_rotation(
+    xformable: UsdGeom.Xformable,
+    *,
+    rotate_x_deg: float = 0.0,
+    rotate_y_deg: float = 0.0,
+) -> None:
+    """Author editable XYZ rotations, optionally with an initial Y rotation."""
+    xformable.AddRotateXOp().Set(rotate_x_deg)
+    xformable.AddRotateYOp().Set(rotate_y_deg)
     xformable.AddRotateZOp().Set(0.0)
+
+
+def configure_generated_asset(
+    output_path: Path,
+    *,
+    rotate_x_deg: float,
+    rotate_y_deg: float,
+    bottom_centered: bool,
+) -> None:
+    """Apply the shared model rotation and optional bottom-center origin."""
+    stage = Usd.Stage.Open(str(output_path))
+    if stage is None or not stage.GetDefaultPrim().IsValid():
+        raise RuntimeError(f"Holder USDを開けませんでした: {output_path}")
+    root = stage.GetDefaultPrim()
+    xformable = UsdGeom.Xformable(root)
+    ops = {op.GetOpName(): op for op in xformable.GetOrderedXformOps()}
+    ops["xformOp:rotateX"].Set(rotate_x_deg)
+    ops["xformOp:rotateY"].Set(rotate_y_deg)
+
+    if bottom_centered:
+        cache = UsdGeom.BBoxCache(
+            Usd.TimeCode.Default(),
+            [UsdGeom.Tokens.default_],
+        )
+        world_range = cache.ComputeWorldBound(root).ComputeAlignedRange()
+        world_minimum = world_range.GetMin()
+        world_maximum = world_range.GetMax()
+        world_shift = Gf.Vec3d(
+            -(world_minimum[0] + world_maximum[0]) / 2.0,
+            -(world_minimum[1] + world_maximum[1]) / 2.0,
+            -world_minimum[2],
+        )
+        root_matrix = xformable.ComputeLocalToWorldTransform(
+            Usd.TimeCode.Default()
+        )
+        local_shift = root_matrix.GetInverse().TransformDir(world_shift)
+
+        for child in root.GetChildren():
+            child_xformable = UsdGeom.Xformable(child)
+            if not child_xformable:
+                continue
+            translate_op = next(
+                (
+                    op
+                    for op in child_xformable.GetOrderedXformOps()
+                    if op.GetOpName() == "xformOp:translate"
+                ),
+                None,
+            )
+            if translate_op is None:
+                translate_op = child_xformable.AddTranslateOp()
+                current = Gf.Vec3d(0.0)
+            else:
+                current = Gf.Vec3d(translate_op.Get())
+            translate_op.Set(current + local_shift)
+
+    for axis in "XYZ":
+        create_optics_attribute(root, f"rotationCenter{axis}_mm", 0.0)
+
+    if bottom_centered:
+        cache = UsdGeom.BBoxCache(
+            Usd.TimeCode.Default(),
+            [UsdGeom.Tokens.default_],
+        )
+        local_range = cache.ComputeLocalBound(root).ComputeAlignedRange()
+        local_minimum = local_range.GetMin()
+        local_maximum = local_range.GetMax()
+        for axis, index in zip("XYZ", range(3)):
+            create_optics_attribute(
+                root,
+                f"center{axis}_mm",
+                (local_minimum[index] + local_maximum[index]) / 2.0,
+            )
+            create_optics_attribute(
+                root,
+                f"size{axis}_mm",
+                local_maximum[index] - local_minimum[index],
+            )
+    stage.GetRootLayer().Save()
 
 
 def write_lo_primitives(
@@ -1741,6 +1936,15 @@ def write_lo_primitives(
         for axis in range(3)
     )
     primitive_attrs = dict(optics_attrs)
+    if (
+        component_type.lower() == "mount"
+        and primitive_attrs.get("loShape") == "cross"
+    ):
+        # The lightweight LCP6X cross is a flat viewport proxy, not a polished
+        # metal representation. Keep its STEP-derived color without inheriting
+        # the default Mount metallic material.
+        primitive_attrs.pop("metalness", None)
+        primitive_attrs.pop("roughness", None)
     primitive_attrs.update({
         "centerX_mm": center[0],
         "centerY_mm": center[1],
@@ -1762,7 +1966,17 @@ def write_lo_primitives(
     root_prim_name = usd_identifier(root_prim_name)
     root_prim = UsdGeom.Xform.Define(stage, f"/{root_prim_name}")
     stage.SetDefaultPrim(root_prim.GetPrim())
-    add_zero_xyz_rotation(UsdGeom.Xformable(root_prim.GetPrim()))
+    add_zero_xyz_rotation(
+        UsdGeom.Xformable(root_prim.GetPrim()),
+        rotate_x_deg=(
+            0.0 if component_type.lower() == "post" else 90.0
+        ),
+        rotate_y_deg=(
+            -90.0
+            if component_type.lower() in {"holder", "post"}
+            else 0.0
+        ),
+    )
     root = root_prim.GetPrim()
     root.CreateAttribute("optics:type", Sdf.ValueTypeNames.Token).Set(
         "mount"
@@ -1796,6 +2010,8 @@ def write_lo_primitives(
             "diameterY_mm": size[1],
             "diameterZ_mm": size[2],
         })
+        primitive_attrs.setdefault("rodEndMinX_mm", minimum[0])
+        primitive_attrs.setdefault("rodEndMaxX_mm", maximum[0])
     elif component_kind == "lens":
         radius_y = size[1] / 2.0
         radius_z = size[2] / 2.0
@@ -1993,10 +2209,33 @@ def write_lo_primitives(
         # lettering, electronics, and connector meshes into lo.  The housing
         # and output barrel share the measured envelope, so changing LOD does
         # not move or resize the component.
-        output_length = min(max(size[0] * 0.1, 4.0), size[0] * 0.25)
-        body_size_x = max(size[0] - output_length, size[0] * 0.5)
+        measured_front = optics_attrs.get("emissionFrontX_mm")
+        measured_length = optics_attrs.get("emissionHeadLength_mm")
+        measured_diameter = optics_attrs.get("emissionDiameter_mm")
+        measured_center_y = float(
+            optics_attrs.get("emissionCenterY_mm", 0.0)
+        )
+        measured_center_z = float(
+            optics_attrs.get("emissionCenterZ_mm", 0.0)
+        )
+        has_measured_output = (
+            measured_front is not None
+            and measured_length is not None
+            and measured_diameter is not None
+        )
+        output_length = (
+            float(measured_length)
+            if has_measured_output
+            else min(max(size[0] * 0.1, 4.0), size[0] * 0.25)
+        )
+        output_front_x = (
+            float(measured_front)
+            if has_measured_output
+            else maximum[0]
+        )
         body_min_x = minimum[0]
-        body_max_x = maximum[0] - output_length
+        body_max_x = output_front_x - output_length
+        body_size_x = max(body_max_x - body_min_x, size[0] * 0.5)
         body_center_x = (body_min_x + body_max_x) / 2.0
 
         body = UsdGeom.Cube.Define(stage, f"/{root_prim_name}/Housing")
@@ -2008,7 +2247,11 @@ def write_lo_primitives(
         )
         set_gprim_appearance(body, display_color, 1.0)
 
-        output_radius = min(size[1], size[2]) * 0.13
+        output_radius = (
+            float(measured_diameter) / 2.0
+            if has_measured_output
+            else min(size[1], size[2]) * 0.13
+        )
         output = UsdGeom.Cylinder.Define(
             stage, f"/{root_prim_name}/Output"
         )
@@ -2018,9 +2261,9 @@ def write_lo_primitives(
         add_primitive_transform(
             output,
             (
-                maximum[0] - output_length / 2.0,
-                0.0,
-                0.0,
+                output_front_x - output_length / 2.0,
+                measured_center_y,
+                measured_center_z,
             ),
         )
         set_gprim_appearance(output, (0.05, 0.05, 0.05), 1.0)
@@ -2103,6 +2346,64 @@ def write_lo_primitives(
             "outerDiameter_mm": radius * 2.0,
             "thickness_mm": size[0],
         })
+    elif component_kind == "mount" and optics_attrs.get("loShape") == "cross":
+        bar_width = float(optics_attrs.get("crossBarWidth_mm", 10.0))
+        cross_display_color = (0.051269, 0.051269, 0.051269)
+        # For a rotated rectangle, both its length and width contribute to the
+        # axis-aligned square envelope. Subtract the bar width so the X ends
+        # at the source model's four corners instead of protruding past them.
+        bar_length = max(
+            math.hypot(size[1], size[2]) - bar_width,
+            bar_width,
+        )
+        for name, angle in (("DiagonalA", 45.0), ("DiagonalB", -45.0)):
+            bar = UsdGeom.Cube.Define(
+                stage, f"/{root_prim_name}/{name}"
+            )
+            bar.CreateSizeAttr(1.0)
+            xformable = UsdGeom.Xformable(bar.GetPrim())
+            translate = xformable.AddTranslateOp()
+            translate.Set(Gf.Vec3d(*center))
+            rotate = xformable.AddRotateXOp()
+            rotate.Set(angle)
+            scale = xformable.AddScaleOp()
+            scale.Set(Gf.Vec3f(size[0], bar_length, bar_width))
+            xformable.SetXformOpOrder([translate, rotate, scale])
+            set_gprim_appearance(
+                bar,
+                cross_display_color,
+                display_opacity,
+            )
+        corner_y = max((size[1] - bar_width) / 2.0, 0.0)
+        corner_z = max((size[2] - bar_width) / 2.0, 0.0)
+        for name, y_sign, z_sign in (
+            ("CornerTopLeft", -1.0, 1.0),
+            ("CornerTopRight", 1.0, 1.0),
+            ("CornerBottomLeft", -1.0, -1.0),
+            ("CornerBottomRight", 1.0, -1.0),
+        ):
+            corner = UsdGeom.Cube.Define(
+                stage, f"/{root_prim_name}/{name}"
+            )
+            corner.CreateSizeAttr(1.0)
+            add_primitive_transform(
+                corner,
+                (
+                    center[0],
+                    center[1] + y_sign * corner_y,
+                    center[2] + z_sign * corner_z,
+                ),
+                (size[0], bar_width, bar_width),
+            )
+            set_gprim_appearance(
+                corner,
+                cross_display_color,
+                display_opacity,
+            )
+        primitive_attrs.update({
+            "crossBarLength_mm": bar_length,
+            "crossBarWidth_mm": bar_width,
+        })
     else:
         body = UsdGeom.Cube.Define(stage, f"/{root_prim_name}/Bounds")
         body.CreateSizeAttr(1.0)
@@ -2131,6 +2432,7 @@ def write_lo_proxy(
     proxy_kind: str,
     segments: int,
     target_triangles: int,
+    primitive_source_points: list[tuple[float, float, float]] | None = None,
 ) -> tuple[
     int,
     tuple[float, float, float],
@@ -2138,8 +2440,13 @@ def write_lo_proxy(
     LoPalette,
 ]:
     """Write a tiny proxy that keeps the hi mesh's bounds and local origin."""
+    bounds_points = (
+        primitive_source_points
+        if proxy_kind == "primitive" and primitive_source_points is not None
+        else source_points
+    )
     minimum, maximum = oriented_bounds(
-        source_points,
+        bounds_points,
         source_forward_axis,
         source_origin,
         source_roll_deg,
@@ -2159,8 +2466,17 @@ def write_lo_proxy(
         source_triangle_colors,
     )
     if proxy_kind == "primitive":
+        primitive_points = [
+            orient_point(
+                point,
+                source_forward_axis,
+                source_origin,
+                source_roll_deg,
+            )
+            for point in bounds_points
+        ]
         write_lo_primitives(
-            oriented_points,
+            primitive_points,
             output_path,
             component_type=component_type,
             root_prim_name=root_prim_name,
@@ -2277,7 +2593,17 @@ def write_usda_mesh(
     root_prim_name = usd_identifier(root_prim_name)
     root_prim = UsdGeom.Xform.Define(stage, f"/{root_prim_name}")
     stage.SetDefaultPrim(root_prim.GetPrim())
-    add_zero_xyz_rotation(UsdGeom.Xformable(root_prim.GetPrim()))
+    add_zero_xyz_rotation(
+        UsdGeom.Xformable(root_prim.GetPrim()),
+        rotate_x_deg=(
+            0.0 if component_type.lower() == "post" else 90.0
+        ),
+        rotate_y_deg=(
+            -90.0
+            if component_type.lower() in {"holder", "post"}
+            else 0.0
+        ),
+    )
 
     # server.py discovers every placed component through optics:type.
     root = root_prim.GetPrim()
@@ -2362,7 +2688,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help=(
             "入力STEPファイル。複数指定すると光学部品とマウントを"
-            "同じ座標系で結合します（省略時はLA4380-A-Step）"
+            "同じ座標系で結合します（省略時はLens/LA1417-AB-Step）"
         ),
     )
     parser.add_argument(
@@ -2413,7 +2739,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=LO_PROXY_MODES,
         default="auto",
         help=(
-            "loの形状。autoはUSD基本形状のみのprimitiveを使用します。"
+            "loの形状。autoは通常USD基本形状のprimitive、"
+            "mountは低詳細度meshを使用します。"
             "convex-hullはCADの最外頂点を結んだ簡略Meshを作ります"
         ),
     )
@@ -2449,9 +2776,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--source-forward-axis",
         type=str.upper,
-        choices=FORWARD_AXES,
+        choices=("AUTO", *FORWARD_AXES),
         default="+Z",
-        help="STEPモデルの前方向・光軸。出力時に+Xへ合わせます",
+        help=(
+            "STEPモデルの前方向・光軸。出力時に+Xへ合わせます。"
+            "AUTOはCAD外形の最長軸を使用します"
+        ),
     )
     parser.add_argument(
         "--source-origin",
@@ -2484,6 +2814,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_DISPLAY_COLOR,
         metavar=("R", "G", "B"),
         help="STEPに色がない面の0〜1 RGB表示色",
+    )
+    parser.add_argument(
+        "--lo-color",
+        nargs=3,
+        type=float,
+        default=None,
+        metavar=("R", "G", "B"),
+        help="lo.usdaだけに適用する0〜1 RGB表示色",
     )
     parser.add_argument(
         "--color-reference-step",
@@ -2546,8 +2884,6 @@ def main(argv: list[str] | None = None) -> None:
         args.component_type = "lens"
     if len(args.step_paths) == 1 and args.step_paths[0].is_dir():
         step_directory = args.step_paths[0].resolve()
-        if args.component_type.lower() != "rod":
-            parser.error("STEPディレクトリの一括変換は--type rodで指定してください")
         if args.output is not None:
             parser.error("STEPディレクトリと--outputは同時に指定できません")
         if args.component_name is not None:
@@ -2579,7 +2915,10 @@ def main(argv: list[str] | None = None) -> None:
                 "--component-name",
                 f"{step_directory.name}/{step_file.stem}",
             ])
-            print(f"=== Rod一括変換: {step_file.name} ===")
+            print(
+                f"=== {args.component_type.title()}一括変換: "
+                f"{step_file.name} ==="
+            )
             main(child_argv)
         return
     if not all(0.0 <= channel <= 1.0 for channel in args.color):
@@ -2617,7 +2956,7 @@ def main(argv: list[str] | None = None) -> None:
     if using_default_step:
         component_name = args.component_name or DEFAULT_COMPONENT_NAME
         step_paths = [(
-            ROOT_DIR / "cad" / component_name / f"{component_name}.step"
+            ROOT_DIR / "cad" / f"{component_name}.step"
         )]
     else:
         step_paths = args.step_paths
@@ -2625,17 +2964,47 @@ def main(argv: list[str] | None = None) -> None:
 
     root_prim_name = args.root_prim or usd_identifier(args.component_type.title())
     optics_attrs = parse_optics_attrs(args.attr)
+    lcp6x_component = (
+        args.component_type.lower() == "mount"
+        and Path(component_name).name.lower() == "lcp6x-step"
+    )
+    if lcp6x_component:
+        optics_attrs.setdefault("loShape", "cross")
+        optics_attrs.setdefault("crossBarWidth_mm", 10.0)
+        optics_attrs.setdefault("beamApertureRadius_mm", 12.8016)
+        optics_attrs.setdefault("rodHoleRadius_mm", 3.0099)
+        optics_attrs.setdefault(
+            "rodHoleOffsets_mm",
+            (
+                "[[0,-30,-30],[0,-30,30],[0,-15,-15],[0,-15,15],"
+                "[0,15,-15],[0,15,15],[0,30,-30],[0,30,30]]"
+            ),
+        )
     rod_component = is_rod_component(
         args.component_type,
         root_prim_name,
     )
+    holder_component = args.component_type.lower() == "holder"
+    post_component = args.component_type.lower() == "post"
+    breadboard_component = args.component_type.lower() == "breadboard"
+    bottom_centered_component = holder_component or post_component
+    holder_is_short = (
+        Path(component_name).name.lower()
+        in {"ph20e_m-step", "ph30e_m-step"}
+    )
+    holder_rotate_x = 90.0
+    holder_rotate_y = -180.0 if holder_is_short else -90.0
+    metal_component = (
+        rod_component
+        or args.component_type.lower() in {"mount", "post"}
+    )
     if args.metalness is not None:
         optics_attrs["metalness"] = args.metalness
-    elif rod_component:
+    elif metal_component:
         optics_attrs.setdefault("metalness", 0.9)
     if args.roughness is not None:
         optics_attrs["roughness"] = args.roughness
-    elif rod_component:
+    elif metal_component:
         optics_attrs.setdefault("roughness", 0.08)
     lo_target_triangles = (
         args.lo_target_triangles
@@ -2731,11 +3100,34 @@ def main(argv: list[str] | None = None) -> None:
             parts.extend(source_parts)
         return parts
 
+    effective_source_axis = args.source_forward_axis
     effective_source_origin = tuple(args.source_origin)
-    if rod_component and "--source-origin" not in raw_argv:
-        # Vendor Rod STEP files are not consistently authored around (0,0,0).
-        # Center the measured CAD envelope so placement and rotation use the
-        # actual Rod center. An explicit --source-origin always wins.
+    effective_source_roll = args.source_roll_deg
+    nested_laser = (
+        args.component_type.lower() == "laser"
+        and component_name.replace("\\", "/").lower().startswith("laser/")
+    )
+    if nested_laser and "--source-roll-deg" not in raw_argv:
+        # The application coordinate convention otherwise displays vendor
+        # Laser STEP data with a -90 degree roll.
+        effective_source_roll = 90.0
+    # Rod catalogue models intentionally use their envelope center as the
+    # placement origin. Laser STEP files, however, already carry the optical
+    # origin used by the legacy top-level assets. Re-centering only the nested
+    # Laser catalogue shifted NPL64A by 3.063 mm and made its hi geometry miss
+    # the beam even though both catalogue entries came from the same STEP.
+    center_generated_component = (
+        rod_component or bottom_centered_component or breadboard_component
+    )
+    if (
+        effective_source_axis == "AUTO"
+        or (
+            center_generated_component
+            and "--source-origin" not in raw_argv
+        )
+    ):
+        # Vendor catalogue STEP files are not consistently authored around
+        # (0,0,0), and Laser models do not consistently share a forward axis.
         mesh_shape(shape, *mesh_settings["hi"])
         source_points = [
             point
@@ -2746,12 +3138,136 @@ def main(argv: list[str] | None = None) -> None:
             source_points,
             "+X",
         )
-        effective_source_origin = tuple(
-            (
-                source_minimum[axis] + source_maximum[axis]
-            ) / 2.0
-            for axis in range(3)
+        if effective_source_axis == "AUTO":
+            source_size = [
+                source_maximum[axis] - source_minimum[axis]
+                for axis in range(3)
+            ]
+            longest_axis = max(
+                range(3),
+                key=source_size.__getitem__,
+            )
+            effective_source_axis = ("+X", "+Y", "+Z")[longest_axis]
+        if (
+            center_generated_component
+            and "--source-origin" not in raw_argv
+        ):
+            if breadboard_component:
+                oriented_points = [
+                    orient_point(
+                        point,
+                        effective_source_axis,
+                        (0.0, 0.0, 0.0),
+                        effective_source_roll,
+                    )
+                    for point in source_points
+                ]
+                oriented_minimum, oriented_maximum = oriented_bounds(
+                    oriented_points, "+X"
+                )
+                oriented_origin = (
+                    (oriented_minimum[0] + oriented_maximum[0]) / 2.0,
+                    (oriented_minimum[1] + oriented_maximum[1]) / 2.0,
+                    oriented_maximum[2],
+                )
+                oriented_basis = [
+                    orient_point(
+                        basis,
+                        effective_source_axis,
+                        (0.0, 0.0, 0.0),
+                        effective_source_roll,
+                    )
+                    for basis in (
+                        (1.0, 0.0, 0.0),
+                        (0.0, 1.0, 0.0),
+                        (0.0, 0.0, 1.0),
+                    )
+                ]
+                effective_source_origin = tuple(
+                    sum(
+                        oriented_basis[source_axis][oriented_axis]
+                        * oriented_origin[oriented_axis]
+                        for oriented_axis in range(3)
+                    )
+                    for source_axis in range(3)
+                )
+            else:
+                effective_source_origin = tuple(
+                    (
+                        source_minimum[axis] + source_maximum[axis]
+                    ) / 2.0
+                    for axis in range(3)
+                )
+
+    if (
+        nested_laser
+        and Path(component_name).name.lower() == "pl251-step"
+    ):
+        laser_parts = all_colored_mesh_parts(True)
+        emission = analyze_cylindrical_laser_emission(
+            laser_parts,
+            effective_source_axis,
+            effective_source_origin,
+            effective_source_roll,
         )
+        if "--source-origin" not in raw_argv:
+            # Translate the complete model (housing, cable, and output barrel)
+            # so the detected barrel axis becomes the component's local +X
+            # optical axis.  The inverse rotation maps the desired oriented
+            # Y/Z origin back into the source STEP coordinate system.
+            oriented_basis = [
+                orient_point(
+                    basis,
+                    effective_source_axis,
+                    (0.0, 0.0, 0.0),
+                    effective_source_roll,
+                )
+                for basis in (
+                    (1.0, 0.0, 0.0),
+                    (0.0, 1.0, 0.0),
+                    (0.0, 0.0, 1.0),
+                )
+            ]
+            oriented_center = (0.0, emission.center_y, emission.center_z)
+            source_center_delta = tuple(
+                sum(
+                    oriented_basis[source_axis][oriented_axis]
+                    * oriented_center[oriented_axis]
+                    for oriented_axis in range(3)
+                )
+                for source_axis in range(3)
+            )
+            effective_source_origin = tuple(
+                effective_source_origin[axis] + source_center_delta[axis]
+                for axis in range(3)
+            )
+            emission = analyze_cylindrical_laser_emission(
+                laser_parts,
+                effective_source_axis,
+                effective_source_origin,
+                effective_source_roll,
+            )
+        optics_attrs.update({
+            "emissionOffset_mm": emission.offset_x,
+            "emissionFrontX_mm": emission.front_x,
+            "emissionHeadLength_mm": emission.front_x - emission.back_x,
+            "emissionRecessDepth_mm": emission.front_x - emission.offset_x,
+            "emissionCenterY_mm": emission.center_y,
+            "emissionCenterZ_mm": emission.center_z,
+            "emissionDiameter_mm": emission.diameter,
+        })
+    elif (
+        nested_laser
+        and Path(component_name).name.lower() == "npl64a-step"
+    ):
+        # NPL64A's emitting surface is the recessed circular face. The CAD
+        # envelope continues to X=69.775 mm on unrelated parts, so the generic
+        # sizeX/2 fallback leaves the beam floating 11.769 mm in front.
+        optics_attrs.setdefault("emissionOffset_mm", 58.00558)
+        optics_attrs.setdefault("emissionCenterY_mm", 0.0)
+        optics_attrs.setdefault("emissionCenterZ_mm", 0.0)
+        optics_attrs.setdefault("pulseWidth_ns", 10)
+        optics_attrs.setdefault("wavelength_nm", 640)
 
     print("STEPファイルの読み込みに成功しました")
     for step_path in step_paths:
@@ -2770,6 +3286,8 @@ def main(argv: list[str] | None = None) -> None:
             ROOT_DIR / "components" / component_name / f"{lod_name}.usda"
         )
         proxy_kind = lo_proxy_kind(args.component_type, args.lo_proxy)
+        if lcp6x_component and args.lo_proxy == "auto":
+            proxy_kind = "primitive"
 
         if lod_name == "lo" and proxy_kind != "mesh":
             if hi_source_points is None:
@@ -2780,20 +3298,61 @@ def main(argv: list[str] | None = None) -> None:
                     f"角度誤差={hi_angular} rad) ---"
                 )
                 mesh_shape(shape, hi_linear, hi_angular)
-                hi_source_regions = all_source_regions(False)
+                hi_source_regions = all_source_regions(True)
                 (
                     hi_source_points,
                     hi_source_indices,
                     hi_source_triangle_colors,
                 ) = combine_source_regions(hi_source_regions)
             else:
-                # lo appearance is intentionally independent of STEP colors.
-                hi_source_regions = all_source_regions(False)
+                # Every lo model uses the surface-area-dominant color from hi.
+                hi_source_regions = all_source_regions(True)
                 (
                     hi_source_points,
                     hi_source_indices,
                     hi_source_triangle_colors,
                 ) = combine_source_regions(hi_source_regions)
+
+            rod_primitive_points = None
+            if rod_component:
+                rod_parts = split_rod_hi_parts(
+                    all_colored_mesh_parts(True)
+                )
+                # The low-detail Rod represents the central shaft plus the
+                # two inner end pieces (CADMesh_001, _002, and _004).
+                rod_primitive_points = [
+                    point
+                    for index in (0, 1, 3)
+                    for point in rod_parts[index].points
+                ]
+                positive_inner_points = [
+                    orient_point(
+                        point,
+                        effective_source_axis,
+                        effective_source_origin,
+                        effective_source_roll,
+                    )
+                    for point in rod_parts[1].points
+                ]
+                negative_inner_points = [
+                    orient_point(
+                        point,
+                        effective_source_axis,
+                        effective_source_origin,
+                        effective_source_roll,
+                    )
+                    for point in rod_parts[3].points
+                ]
+                _, positive_inner_maximum = oriented_bounds(
+                    positive_inner_points,
+                    "+X",
+                )
+                negative_inner_minimum, _ = oriented_bounds(
+                    negative_inner_points,
+                    "+X",
+                )
+                optics_attrs["rodEndMinX_mm"] = negative_inner_minimum[0]
+                optics_attrs["rodEndMaxX_mm"] = positive_inner_maximum[0]
 
             triangle_count, minimum, maximum, palette = write_lo_proxy(
                 hi_source_points,
@@ -2803,14 +3362,39 @@ def main(argv: list[str] | None = None) -> None:
                 output_path,
                 component_type=args.component_type,
                 root_prim_name=root_prim_name,
-                source_forward_axis=args.source_forward_axis,
+                source_forward_axis=effective_source_axis,
                 source_origin=effective_source_origin,
-                source_roll_deg=args.source_roll_deg,
+                source_roll_deg=effective_source_roll,
                 optics_attrs=optics_attrs,
                 display_opacity=args.opacity,
                 proxy_kind=proxy_kind,
                 segments=args.lo_segments,
                 target_triangles=lo_target_triangles,
+                primitive_source_points=rod_primitive_points,
+            )
+            if args.lo_color is not None:
+                stage = Usd.Stage.Open(str(output_path))
+                for prim in stage.Traverse():
+                    if prim.IsA(UsdGeom.Gprim):
+                        UsdGeom.Gprim(prim).CreateDisplayColorAttr(
+                            [tuple(args.lo_color)]
+                        )
+                stage.GetRootLayer().Save()
+            configure_generated_asset(
+                output_path,
+                rotate_x_deg=(
+                    holder_rotate_x
+                    if holder_component
+                    else 0.0
+                    if post_component or breadboard_component
+                    else 90.0
+                ),
+                rotate_y_deg=(
+                    holder_rotate_y
+                    if holder_component
+                    else -90.0 if post_component else 0.0
+                ),
+                bottom_centered=bottom_centered_component,
             )
             size = tuple(
                 maximum[axis] - minimum[axis]
@@ -2848,7 +3432,8 @@ def main(argv: list[str] | None = None) -> None:
         print("Shapeのメッシュ化に成功しました")
         inspect_mesh(shape, verbose_faces=args.verbose_faces)
 
-        mesh_parts = all_colored_mesh_parts(lod_name == "hi")
+        use_step_colors = lod_name == "hi" and not args.ignore_step_colors
+        mesh_parts = all_colored_mesh_parts(use_step_colors)
         if lod_name == "hi" and reference_source is not None:
             reference_shape, _, reference_color_tool = reference_source
             mesh_shape(
@@ -2866,6 +3451,34 @@ def main(argv: list[str] | None = None) -> None:
                 mesh_parts = collapse_to_one_color_per_group(mesh_parts)
         if lod_name == "hi" and rod_component:
             mesh_parts = split_rod_hi_parts(mesh_parts)
+            positive_inner_points = [
+                orient_point(
+                    point,
+                    effective_source_axis,
+                    effective_source_origin,
+                    effective_source_roll,
+                )
+                for point in mesh_parts[1].points
+            ]
+            negative_inner_points = [
+                orient_point(
+                    point,
+                    effective_source_axis,
+                    effective_source_origin,
+                    effective_source_roll,
+                )
+                for point in mesh_parts[3].points
+            ]
+            _, positive_inner_maximum = oriented_bounds(
+                positive_inner_points,
+                "+X",
+            )
+            negative_inner_minimum, _ = oriented_bounds(
+                negative_inner_points,
+                "+X",
+            )
+            optics_attrs["rodEndMinX_mm"] = negative_inner_minimum[0]
+            optics_attrs["rodEndMaxX_mm"] = positive_inner_maximum[0]
         points = [point for part in mesh_parts for point in part.points]
         face_vertex_indices = [
             index
@@ -2873,7 +3486,7 @@ def main(argv: list[str] | None = None) -> None:
             for index in part.face_vertex_indices
         ]
         if lod_name == "hi":
-            hi_source_regions = all_source_regions(True)
+            hi_source_regions = all_source_regions(use_step_colors)
             (
                 hi_source_points,
                 hi_source_indices,
@@ -2891,13 +3504,29 @@ def main(argv: list[str] | None = None) -> None:
             output_path,
             component_type=args.component_type,
             root_prim_name=root_prim_name,
-            source_forward_axis=args.source_forward_axis,
+            source_forward_axis=effective_source_axis,
             source_origin=effective_source_origin,
-            source_roll_deg=args.source_roll_deg,
+            source_roll_deg=effective_source_roll,
             optics_attrs=optics_attrs,
             display_color=tuple(args.color),
             display_opacity=args.opacity,
             mesh_parts=mesh_parts,
+        )
+        configure_generated_asset(
+            output_path,
+            rotate_x_deg=(
+                holder_rotate_x
+                if holder_component
+                else 0.0
+                if post_component or breadboard_component
+                else 90.0
+            ),
+            rotate_y_deg=(
+                holder_rotate_y
+                if holder_component
+                else -90.0 if post_component else 0.0
+            ),
+            bottom_centered=bottom_centered_component,
         )
 
         print(f"{lod_name}.usdaの生成に成功しました")

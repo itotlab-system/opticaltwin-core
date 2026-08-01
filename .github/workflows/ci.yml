@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to a pull request makes the previous run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-app.txt
+
+      # cadquery-ocp (the OpenCASCADE bindings) is deliberately NOT installed:
+      # it is a large optional extra that only the STEP import path needs. The
+      # tests that require it skip themselves, which also checks that a base
+      # install stays usable -- the state a new contributor is actually in.
+      - name: Run tests
+        run: python -m unittest test_component_library test_beam_tracer test_cad_importer
+
+      - name: Run the backend API tests
+        # Only present in the lab's development repository; the public export
+        # ships the unittest suites above.
+        run: |
+          if [ -d tests ]; then
+            pip install -r requirements-dev.txt
+            pytest tests/ -q
+          else
+            echo "no tests/ directory — skipping"
+          fi
+
+      - name: Build the component library and an example project
+        # Catches breakage in the generators that the unit tests would miss,
+        # and proves a fresh clone can reach a runnable state.
+        run: python setup_projects.py
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      # `npm run build` is `tsc -b && vite build`, so this type-checks too.
+      - name: Type-check and build
+        working-directory: app
+        run: npm run build

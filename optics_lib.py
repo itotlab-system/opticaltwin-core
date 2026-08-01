@@ -247,19 +247,19 @@ def make_laser(path, body_mm=(80.0, 40.0, 40.0), wavelength_nm=532.0):
 # ==========================================================================
 
 LIBRARY = {
-    "laser_fiber.usda":      (make_laser, {}),
-    "polarizer.usda":        (make_polarizer, {}),
-    "lens_collimating.usda": (make_lens, dict(focal_length_mm=50.0)),
-    "lens_imaging.usda":     (make_lens, dict(focal_length_mm=150.0)),
-    "lens_f100.usda":        (make_lens, dict(focal_length_mm=100.0)),
-    "beamsplitter_cube.usda": (make_beamsplitter, {}),
-    "slm.usda":              (make_slm, {}),
-    "iris_fourier.usda":     (make_iris, dict(aperture_mm=4.0)),
-    "lens_cylindrical.usda": (make_cylindrical_lens, dict(focal_length_mm=100.0)),
-    "eyepiece.usda":         (make_eyepiece, {}),
-    "camera.usda":           (make_camera, {}),
-    "mirror_1in.usda":       (make_mirror, {}),
-    "detector.usda":         (make_detector, {}),
+    "Low_model/laser_fiber.usda":      (make_laser, {}),
+    "Low_model/polarizer.usda":        (make_polarizer, {}),
+    "Low_model/lens_collimating.usda": (make_lens, dict(focal_length_mm=50.0)),
+    "Low_model/lens_imaging.usda":     (make_lens, dict(focal_length_mm=150.0)),
+    "Low_model/lens_f100.usda":        (make_lens, dict(focal_length_mm=100.0)),
+    "Low_model/beamsplitter_cube.usda": (make_beamsplitter, {}),
+    "Low_model/slm.usda":              (make_slm, {}),
+    "Low_model/iris_fourier.usda":     (make_iris, dict(aperture_mm=4.0)),
+    "Low_model/lens_cylindrical.usda": (make_cylindrical_lens, dict(focal_length_mm=100.0)),
+    "Low_model/eyepiece.usda":         (make_eyepiece, {}),
+    "Low_model/camera.usda":           (make_camera, {}),
+    "Low_model/mirror_1in.usda":       (make_mirror, {}),
+    "Low_model/detector.usda":         (make_detector, {}),
 }
 
 def cad_library_assets(lib_dir=None):
@@ -293,7 +293,11 @@ def cad_library_assets(lib_dir=None):
 
 def component_library_assets(lib_dir=None):
     """Return standard assets plus every generated hi/lo component pair."""
-    return sorted(set(LIBRARY) | cad_library_assets(lib_dir))
+    generated = {
+        asset for asset in cad_library_assets(lib_dir)
+        if not asset.startswith("Breadboard/")
+    }
+    return sorted(set(LIBRARY) | generated)
 
 
 def build_component_library(lib_dir):
@@ -325,7 +329,8 @@ def new_setup_stage(path, root_name="OpticalSetup"):
 
 
 def add_breadboard(stage, root_path, nx, ny, x0=0.0, y0=0.0, spacing=GRID_MM,
-                   thickness_mm=12.0, hole_dia_mm=6.0):
+                   thickness_mm=12.0, hole_dia_mm=6.0,
+                   asset_rel_path=None):
     """Add a breadboard slab plus a PointInstancer hole grid.
 
     Hole (i, j) sits at world (x0 + i*spacing, y0 + j*spacing). The slab top is
@@ -339,12 +344,43 @@ def add_breadboard(stage, root_path, nx, ny, x0=0.0, y0=0.0, spacing=GRID_MM,
     board_top = BEAM_Z - 19.0
     board_cz = board_top - thickness_mm / 2.0
 
+    if asset_rel_path:
+        import usd_utility as uu
+        board_xform = UsdGeom.Xform.Define(stage, f"{root_path}/Breadboard")
+        board_prim = board_xform.GetPrim()
+        board_prim.GetReferences().AddReference(
+            uu.normalize_component_asset_ref(asset_rel_path)
+        )
+        board_prim.CreateAttribute(
+            "optics:type", Sdf.ValueTypeNames.Token
+        ).Set("breadboard")
+        board_prim.CreateAttribute(
+            "optics:fixedBoard", Sdf.ValueTypeNames.Bool
+        ).Set(True)
+        return board_xform
+
     board = UsdGeom.Cube.Define(stage, f"{root_path}/Breadboard")
     board.CreateSizeAttr(1.0)
     UsdGeom.Xformable(board).AddTransformOp().Set(
         Gf.Matrix4d().SetScale(Gf.Vec3d(w, d, thickness_mm))
         .SetTranslateOnly(Gf.Vec3d(cx, cy, board_cz)))
     board.CreateDisplayColorAttr([(0.18, 0.18, 0.2)])
+    board_prim = board.GetPrim()
+    board_prim.CreateAttribute(
+        "optics:minSizeX", Sdf.ValueTypeNames.Double
+    ).Set(float(w))
+    board_prim.CreateAttribute(
+        "optics:minSizeY", Sdf.ValueTypeNames.Double
+    ).Set(float(d))
+    board_prim.CreateAttribute(
+        "optics:gridSpacing", Sdf.ValueTypeNames.Double
+    ).Set(float(spacing))
+    board_prim.CreateAttribute(
+        "optics:gridOriginX", Sdf.ValueTypeNames.Double
+    ).Set(float(x0))
+    board_prim.CreateAttribute(
+        "optics:gridOriginY", Sdf.ValueTypeNames.Double
+    ).Set(float(y0))
 
     # hole grid as a PointInstancer (one prototype, many positions)
     pi = UsdGeom.PointInstancer.Define(stage, f"{root_path}/Holes")

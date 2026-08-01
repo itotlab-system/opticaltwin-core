@@ -1,6 +1,7 @@
 import { Instances, Instance } from "@react-three/drei";
 import type { Vector3 } from "three";
 import type { Board } from "../types";
+import Component3D from "./Component3D";
 
 export default function Breadboard({
   board,
@@ -35,17 +36,25 @@ export default function Breadboard({
 
   return (
     <group>
-      <mesh
-        position={center}
-        receiveShadow
-      >
-        <boxGeometry args={size} />
-        <meshStandardMaterial
-          color="#6e747d"
-          metalness={0.5}
-          roughness={0.55}
+      {board.model ? (
+        <Component3D
+          c={board.model}
+          selected={false}
+          interactive={false}
+          setRef={() => {}}
+          onSelect={() => {}}
+          onMove={() => {}}
         />
-      </mesh>
+      ) : (
+        <mesh position={center} receiveShadow>
+          <boxGeometry args={size} />
+          <meshStandardMaterial
+            color="#6e747d"
+            metalness={0.5}
+            roughness={0.55}
+          />
+        </mesh>
+      )}
 
       {(onPlace || onPreviewMove) && (
         <mesh
@@ -104,20 +113,27 @@ export default function Breadboard({
         </mesh>
       )}
 
-      {board.holes.length > 0 && (
-        <Instances limit={board.holes.length} range={board.holes.length}>
+      {(
+        (!board.model || board.model.renderMode === "lo")
+        && board.holes.length > 0
+      ) && (
+        <Instances
+          key={`${board.sizeX}x${board.sizeY}`}
+          limit={board.holes.length}
+          range={board.holes.length}
+        >
           {/* A shallow dark counterbore per hole, sitting on the top face */}
           <cylinderGeometry args={[3, 3, 2.4, 12]} />
           <meshStandardMaterial
-            color="#23262c"
-            metalness={0.4}
-            roughness={0.7}
+            color="#20242a"
+            metalness={0}
+            roughness={0.75}
           />
 
           {board.holes.map(([hx, hy], i) => (
             <Instance
               key={i}
-              position={[hx, hy, top - 0.6]}
+              position={[hx, hy, top - 1.1]}
               rotation={[Math.PI / 2, 0, 0]}
             />
           ))}

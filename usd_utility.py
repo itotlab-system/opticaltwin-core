@@ -60,6 +60,53 @@ def normalize_component_references_in_usda(path, render_mode="lo"):
     return True
 
 
+def ensure_fixed_breadboard_reference(
+    path,
+    component_name="Breadboard/MB6060_M-Step",
+):
+    """Replace a legacy generated board with the fixed centred CAD asset."""
+    from pxr import Sdf, Usd, UsdGeom
+
+    stage = Usd.Stage.Open(str(path))
+    if stage is None or not stage.GetDefaultPrim().IsValid():
+        return False
+    root_path = stage.GetDefaultPrim().GetPath()
+    board_path = root_path.AppendChild("Breadboard")
+    holes_path = root_path.AppendChild("Holes")
+    board = stage.GetPrimAtPath(board_path)
+    fixed = board.GetAttribute("optics:fixedBoard") if board else None
+    references = str(board.GetMetadata("references")) if board else ""
+    if (
+        fixed and fixed.Get()
+        and "Breadboard/" in references
+        and "/lo.usda" in references
+    ):
+        return False
+
+    if board:
+        stage.RemovePrim(board_path)
+    if stage.GetPrimAtPath(holes_path):
+        stage.RemovePrim(holes_path)
+
+    board = UsdGeom.Xform.Define(stage, board_path).GetPrim()
+    project_dir = os.path.dirname(os.path.abspath(path))
+    components_dir = os.path.join(
+        os.path.dirname(os.path.dirname(project_dir)), "components"
+    )
+    asset_path = get_relative_component_usda_path(
+        components_dir, f"{component_name}.usda", project_dir
+    )
+    board.GetReferences().AddReference(asset_path)
+    board.CreateAttribute("optics:type", Sdf.ValueTypeNames.Token).Set(
+        "breadboard"
+    )
+    board.CreateAttribute("optics:fixedBoard", Sdf.ValueTypeNames.Bool).Set(
+        True
+    )
+    stage.GetRootLayer().Save()
+    return True
+
+
 def set_render_mode(stage, component_path, mode):
     from pxr import UsdGeom, Sdf
 

@@ -1,0 +1,76 @@
+name: Bug report
+description: Something in OpticalTwin does not work the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please check first that this is a layout or
+        editor problem — OpticalTwin draws beams as straight planning lines and
+        does not model refraction, focusing or diffraction, so a beam that does
+        not bend at a lens is working as intended.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+      placeholder: |
+        1. Opened project X
+        2. Dragged the mirror to Y = 50
+        3. Expected the beam to fold; the beam disappeared instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: setup
+    attributes:
+      label: The scene, if you can share it
+      description: |
+        Setups are plain text, so a `setup.usda` excerpt or a diff is usually
+        enough. **Please check it contains no unpublished work of your own
+        before pasting.**
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: A release tag, or the commit you are on (`git rev-parse --short HEAD`).
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does it happen
+      options:
+        - Browser client (viewport, outliner, inspector)
+        - Backend / API (server.py)
+        - Scene generation (optics_lib, templates, setup_projects)
+        - Beam path (beam_tracer)
+        - CAD import (cad_importer)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, Node version, browser.
+      placeholder: |
+        Ubuntu 24.04, Python 3.12.3, Node 20.11, Chrome 130
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console or server output
+      description: Anything from the browser console or the `server.py` terminal.
+      render: shell
+    validations:
+      required: false

@@ -1,6 +1,8 @@
-import type { Component } from "../types";
+import type { Component, ComponentGroup } from "../types";
+import { useState } from "react";
 import { useSettings } from "../settings";
 import { colorFor } from "./typeColor";
+import { groupOf } from "../groups";
 
 function rodModelNumber(asset: string): number {
   const parts = asset.split("/");
@@ -15,11 +17,16 @@ function rodModelNumber(asset: string): number {
 }
 
 export default function Outliner({
-  components, selected, onSelect, library, asset, onAssetChange, onAdd, isPlacing,
+  components, groups, selection, enteredGroupId, onSelect, onDrillIn,
+  library, asset, onAssetChange, onAdd, isPlacing,
 }: {
   components: Component[];
-  selected: string | null;
-  onSelect: (name: string | null) => void;
+  groups: ComponentGroup[];
+  selection: string[];
+  enteredGroupId: string | null;
+  onSelect: (name: string | null, additive?: boolean) => void;
+  // Double-click drills into the group, same as in the viewport.
+  onDrillIn: (name: string) => void;
   library: string[];
   asset: string;
   onAssetChange: (a: string) => void;
@@ -28,6 +35,46 @@ export default function Outliner({
 }) {
   const { t } = useSettings();
   const sorted = [...components].sort((a, b) => a.x - b.x);
+  const [expandedTypes, setExpandedTypes] = useState<Set<string>>(() => new Set());
+
+  const componentsByType = new Map<string, Component[]>();
+  for (const component of sorted) {
+    const type = component.type.trim().toLowerCase() || "unknown";
+    const typeComponents = componentsByType.get(type) ?? [];
+    typeComponents.push(component);
+    componentsByType.set(type, typeComponents);
+  }
+  const componentTypes = [...componentsByType.keys()].sort((a, b) =>
+    displayType(a).localeCompare(displayType(b), undefined, { numeric: true })
+  );
+
+  const toggleType = (type: string) => {
+    setExpandedTypes((current) => {
+      const next = new Set(current);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  };
+
+  const componentRow = (c: Component) => {
+    const componentGroup = groupOf(groups, c.name);
+    return (
+      <div
+        key={c.name}
+        className={"node" + (selection.includes(c.name) ? " sel" : "")
+          + " node-member"
+          + (componentGroup ? " grouped-member" : "")
+          + (componentGroup?.id === enteredGroupId ? " entered" : "")}
+        onClick={(e) => onSelect(c.name, e.ctrlKey || e.metaKey)}
+        onDoubleClick={() => onDrillIn(c.name)}
+      >
+        <span className="swatch" style={{ background: colorFor(c.type) }} />
+        <span className="nm">{c.name}</span>
+        <span className="x-hint">{c.x >= 0 ? "+" : ""}{Math.round(c.x)}</span>
+      </div>
+    );
+  };
   const libraryGroups = new Map<string, string[]>();
   for (const libraryAsset of library) {
     const parts = libraryAsset.split("/");
@@ -53,17 +100,32 @@ export default function Outliner({
     <div className="outliner">
       <div className="section-title">{t("outliner_title")}</div>
       {sorted.length === 0 && <div className="empty">{t("outliner_empty")}</div>}
-      {sorted.map((c) => (
-        <div
-          key={c.name}
-          className={"node" + (selected === c.name ? " sel" : "")}
-          onClick={() => onSelect(c.name)}
-        >
-          <span className="swatch" style={{ background: colorFor(c.type) }} />
-          <span className="nm">{c.name}</span>
-          <span className="x-hint">{c.x >= 0 ? "+" : ""}{Math.round(c.x)}</span>
-        </div>
-      ))}
+
+      {componentTypes.map((type) => {
+        const typeComponents = componentsByType.get(type) ?? [];
+        const expanded = expandedTypes.has(type);
+        return (
+          <div key={type} className="type-group">
+            <button
+              type="button"
+              className="type-head"
+              aria-expanded={expanded}
+              onClick={() => toggleType(type)}
+            >
+              <span className="swatch" style={{ background: colorFor(type) }} />
+              <span className="tree-arrow" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+              <span className="nm">{displayType(type)}</span>
+              <span className="x-hint">{typeComponents.length}</span>
+            </button>
+            {expanded && (
+              <div className="type-members">
+                {typeComponents.map(componentRow)}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
       {library.length > 0 && (
         <div className="outliner-add">
           {libraryGroups.size > 1 && (
@@ -100,4 +162,19 @@ export default function Outliner({
       )}
     </div>
   );
+}
+
+export function displayType(type: string): string {
+  const normalized = type.trim().toLowerCase();
+  const labels: Record<string, string> = {
+    slm: "SLM",
+    beamsplitter: "Beam Splitter",
+    cylindrical_lens: "Cylindrical Lens",
+    mount: "Cage",
+  };
+  return labels[normalized] ?? normalized
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
 }

@@ -1,0 +1,364 @@
+# OpticalTwin — manufacturer CAD sources
+#
+# This file is a list of *pointers*. No vendor CAD is stored in this repository
+# and none is redistributed by it. Manufacturer STEP models stay the property of
+# their manufacturer, and their terms generally allow you to use them in your own
+# design work but not to pass them on. So the repository ships the part numbers
+# and where to get them; you download the models for the parts you own.
+#
+# Fetch them with:
+#
+#     python tools/fetch_cad.py --list           # show what is missing
+#     python tools/fetch_cad.py                  # download what has a url
+#
+# and convert them with cad_importer.py (see docs/dev/ASSETS.md).
+#
+# TOML, not YAML, so `tomllib` from the Python 3.12 standard library can read it
+# without adding a dependency.
+#
+# ---------------------------------------------------------------------------
+# Filling in `step_url`
+# ---------------------------------------------------------------------------
+# `product_page` is a plain public catalogue link and is safe to publish.
+# `step_url` is left empty on purpose: direct download links are not stable
+# across vendors, and some sit behind a form. Fill in the ones you can, or leave
+# them empty and let fetch_cad.py print the product page for a manual download.
+#
+# Do NOT paste a link to a re-upload of vendor CAD on a third-party model site.
+# It does not make redistribution lawful, and it breaks whenever that upload is
+# taken down. Link to the manufacturer.
+
+version = 1
+
+[defaults]
+vendor = "Thorlabs"
+# {part} is substituted with the part_number of each entry.
+product_page = "https://www.thorlabs.com/thorproduct.cfm?partnumber={part}"
+license_note = """
+Thorlabs publishes STEP models on each product page for use in customer designs.
+Thorlabs retains ownership; redistribution is not granted. Download the parts you
+own yourself. Check the terms on the page before using them for anything beyond
+your own layout work."""
+
+# ---------------------------------------------------------------------------
+# Optics
+# ---------------------------------------------------------------------------
+[[parts]]
+part = "BSW10R"
+type = "beamsplitter"
+target = "Beam Splitter/BSW10R-Step.step"
+step_url = ""
+
+[[parts]]
+part = "LA1417-AB"
+type = "lens"
+target = "Lens/LA1417-AB-Step.step"
+step_url = ""
+# Check this one: the catalogue number is most likely LA1417-A (N-BK7
+# plano-convex, AR coating A). Correct `part` if the -AB suffix is a local
+# renaming rather than the real number.
+
+[[parts]]
+part = "BBSQ2-E02"
+type = "mirror"
+target = "Mirror/BBSQ2-E02-Step.step"
+step_url = ""
+
+[[parts]]
+part = "LPVISE100-A"
+type = "polarizer"
+target = "Polarizer/LPVISE100-A-Step.step"
+step_url = ""
+
+[[parts]]
+part = "CP20D"
+type = "iris"
+target = "Iris/CP20D-Step.step"
+step_url = ""
+
+# ---------------------------------------------------------------------------
+# Sources and displays
+# ---------------------------------------------------------------------------
+[[parts]]
+part = "NPL52B"
+type = "laser"
+target = "Laser/NPL52B-Step.step"
+step_url = ""
+
+[[parts]]
+part = "NPL64A"
+type = "laser"
+target = "Laser/NPL64A-Step.step"
+step_url = ""
+
+[[parts]]
+part = "PL251"
+type = "laser"
+target = "Laser/PL251-Step.step"
+step_url = ""
+
+[[parts]]
+part = "EXULUS-HD2HP"
+type = "slm"
+target = "SLM/EXULUS-HD2HP-Step.step"
+step_url = ""
+
+# ---------------------------------------------------------------------------
+# Breadboards
+# ---------------------------------------------------------------------------
+[[parts]]
+part = "MB6060_M"
+type = "breadboard"
+target = "Breadboard/MB6060_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "MB6090_M"
+type = "breadboard"
+target = "Breadboard/MB6090_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "MB60120_M"
+type = "breadboard"
+target = "Breadboard/MB60120_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "MB7575_M"
+type = "breadboard"
+target = "Breadboard/MB7575_M-Step.step"
+step_url = ""
+
+# ---------------------------------------------------------------------------
+# Cage system
+# ---------------------------------------------------------------------------
+[[parts]]
+part = "CM1-DCH_M"
+type = "cage"
+target = "Cage/CM1-DCH_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "CRM1LT_M"
+type = "cage"
+target = "Cage/CRM1LT_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "LCP33B"
+type = "cage"
+target = "Cage/LCP33B-Step.step"
+step_url = ""
+
+[[parts]]
+part = "LCP35_M"
+type = "cage"
+target = "Cage/LCP35_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "LCP6X"
+type = "cage"
+target = "Cage/LCP6X-Step.step"
+step_url = ""
+
+# ---------------------------------------------------------------------------
+# Posts and post holders
+# ---------------------------------------------------------------------------
+[[parts]]
+part = "PH20E_M"
+type = "holder"
+target = "Holder/PH20E_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "PH30E_M"
+type = "holder"
+target = "Holder/PH30E_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "PH40E_M"
+type = "holder"
+target = "Holder/PH40E_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "PH50E_M"
+type = "holder"
+target = "Holder/PH50E_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "PH75E_M"
+type = "holder"
+target = "Holder/PH75E_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "PH100E_M"
+type = "holder"
+target = "Holder/PH100E_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "PH150E_M"
+type = "holder"
+target = "Holder/PH150E_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "TR20_M"
+type = "post"
+target = "Post/TR20_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "TR30_M"
+type = "post"
+target = "Post/TR30_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "TR40_M"
+type = "post"
+target = "Post/TR40_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "TR50_M"
+type = "post"
+target = "Post/TR50_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "TR75_M"
+type = "post"
+target = "Post/TR75_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "TR100_M"
+type = "post"
+target = "Post/TR100_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "TR150_M"
+type = "post"
+target = "Post/TR150_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "TR200_M"
+type = "post"
+target = "Post/TR200_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "TR250_M"
+type = "post"
+target = "Post/TR250_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "TR300_M"
+type = "post"
+target = "Post/TR300_M-Step.step"
+step_url = ""
+
+# ---------------------------------------------------------------------------
+# Cage rods
+# ---------------------------------------------------------------------------
+[[parts]]
+part = "ER05"
+type = "rod"
+target = "Rod/ER05-Step.step"
+step_url = ""
+
+[[parts]]
+part = "ER1"
+type = "rod"
+target = "Rod/ER1-Step.step"
+step_url = ""
+
+[[parts]]
+part = "ER1.5"
+type = "rod"
+target = "Rod/ER1.5-Step.step"
+step_url = ""
+
+[[parts]]
+part = "ER2"
+type = "rod"
+target = "Rod/ER2-Step.step"
+step_url = ""
+
+[[parts]]
+part = "ER3"
+type = "rod"
+target = "Rod/ER3-Step.step"
+step_url = ""
+
+[[parts]]
+part = "ER4"
+type = "rod"
+target = "Rod/ER4-Step.step"
+step_url = ""
+
+[[parts]]
+part = "ER6"
+type = "rod"
+target = "Rod/ER6-Step.step"
+step_url = ""
+
+[[parts]]
+part = "ER8"
+type = "rod"
+target = "Rod/ER8-Step.step"
+step_url = ""
+
+[[parts]]
+part = "ER10"
+type = "rod"
+target = "Rod/ER10-Step.step"
+step_url = ""
+
+[[parts]]
+part = "ER12"
+type = "rod"
+target = "Rod/ER12-Step.step"
+step_url = ""
+
+[[parts]]
+part = "ER18"
+type = "rod"
+target = "Rod/ER18-Step.step"
+step_url = ""
+
+[[parts]]
+part = "ER24"
+type = "rod"
+target = "Rod/ER24-Step.step"
+step_url = ""
+
+# ---------------------------------------------------------------------------
+# Non-Thorlabs
+# ---------------------------------------------------------------------------
+# The camera body is not an optomechanical catalogue part and its provenance in
+# this project is not recorded. Before publishing a URL for it, establish where
+# the model actually came from and what its terms are -- a model re-uploaded to
+# a community CAD site is usually not the manufacturer's to give away, and
+# linking it does not fix that.
+#
+# Any camera-shaped mesh works: the layout only needs the sensor plane and the
+# body envelope. Substituting a self-made block model is the safe default.
+[[parts]]
+part = "Sony A7 III + FE 28-70"
+vendor = "Sony (provenance unconfirmed)"
+type = "camera"
+target = "Camera/A7 III + FE 28-70 v4.step"
+product_page = ""
+step_url = ""
+license_note = "Provenance unconfirmed. Do not publish a link until it is established."

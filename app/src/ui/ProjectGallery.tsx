@@ -4,13 +4,14 @@ import { useSettings } from "../settings";
 import { colorFor } from "./typeColor";
 
 export default function ProjectGallery({
-  projects, templates, onOpen, onCreate, onDelete,
+  projects, templates, onOpen, onCreate, onDelete, onDuplicate,
 }: {
   projects: ProjectSummary[];
   templates: Template[];
   onOpen: (name: string) => void;
   onCreate: (name: string, template: string) => Promise<void>;
   onDelete: (name: string) => Promise<void>;
+  onDuplicate: (name: string) => Promise<void>;
 }) {
   const { t } = useSettings();
   const [showNew, setShowNew] = useState(false);
@@ -18,6 +19,20 @@ export default function ProjectGallery({
   const [template, setTemplate] = useState(templates[0]?.key ?? "blank");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // Name of the project currently being copied — its card shows "Duplicating…"
+  // and both card buttons are disabled until the copy lands.
+  const [copying, setCopying] = useState<string | null>(null);
+
+  async function duplicate(project: string) {
+    setCopying(project); setErr("");
+    try {
+      await onDuplicate(project);
+    } catch {
+      setErr(t("err_duplicate"));
+    } finally {
+      setCopying(null);
+    }
+  }
 
   async function submit() {
     if (!name.trim()) { setErr(t("err_name")); return; }
@@ -63,13 +78,21 @@ export default function ProjectGallery({
         </div>
       )}
 
+      {err && !showNew && <div className="err">{err}</div>}
+
       <div className="cards">
         {projects.map((p) => (
           <div key={p.name} className="card" onClick={() => onOpen(p.name)}>
             <div className="card-top">
               <span className="card-name">{p.name}</span>
               <button
+                className="card-dup" title={t("duplicate_project")}
+                disabled={copying === p.name}
+                onClick={(e) => { e.stopPropagation(); void duplicate(p.name); }}
+              >⧉</button>
+              <button
                 className="card-del" title="delete project"
+                disabled={copying === p.name}
                 onClick={(e) => { e.stopPropagation(); onDelete(p.name); }}
               >&times;</button>
             </div>
@@ -79,7 +102,9 @@ export default function ProjectGallery({
                 <span key={i} className="chip" style={{ background: colorFor(ty) }} title={ty} />
               ))}
             </div>
-            <div className="card-foot">{t("components_n", { n: p.components })}</div>
+            <div className="card-foot">
+              {copying === p.name ? t("duplicating") : t("components_n", { n: p.components })}
+            </div>
           </div>
         ))}
         {projects.length === 0 && (

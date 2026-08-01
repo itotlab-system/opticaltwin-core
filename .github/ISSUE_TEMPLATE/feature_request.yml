@@ -1,0 +1,49 @@
+name: Feature request
+description: Suggest something OpticalTwin should be able to do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read the scope note below before filling this in — it will save
+        you writing a proposal we have to decline.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      description: |
+        OpticalTwin is for **layout and planning**: where parts sit, whether they
+        fit, whether they line up. It deliberately does not model refraction,
+        focusing, diffraction, or perform ray tracing, and it is not going to
+        become an optical design suite — Zemax, Code V and OpticStudio already
+        do that well. Requests for optical physics will be declined.
+      options:
+        - label: This request is about layout, planning or the editor, not optical physics simulation.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what stops you today?
+      placeholder: |
+        When laying out a cage system I cannot tell whether two mounts collide,
+        so I have to check by eye and it is easy to miss.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like it to do
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+      description: Including whether an existing feature nearly does it.
+    validations:
+      required: false

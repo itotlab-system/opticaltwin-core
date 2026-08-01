@@ -88,6 +88,64 @@ button.primary { background: var(--accent-dim); border-color: var(--accent); }
 button.ghost { background: transparent; }
 .toggle { font-size: 12px; padding: 6px 9px; }
 
+.transform-mode-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.transform-mode-toggle button {
+  border-radius: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.transform-mode-toggle button:first-child {
+  border-radius: 7px 0 0 7px;
+}
+.transform-mode-toggle button:last-child {
+  margin-left: -1px;
+  border-radius: 0 7px 7px 0;
+}
+.transform-mode-toggle button.active {
+  position: relative;
+  color: var(--text);
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+.transform-mode-toggle button:disabled {
+  cursor: default;
+  opacity: .45;
+}
+
+.history-controls { display: inline-flex; gap: 4px; flex: 0 0 auto; }
+.history-controls .iconbtn { width: 28px; height: 28px; font-size: 15px; }
+
+/* Viewport background picker — each swatch *is* the colour it selects, so it
+   needs no label. Values mirror VIEWPORT_BG in settings.tsx. */
+.bg-toggle { display: inline-flex; gap: 4px; flex: 0 0 auto; }
+.bg-swatch {
+  width: 20px; height: 20px; padding: 0;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+}
+.bg-swatch:hover { border-color: var(--accent); }
+.bg-swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.bg-swatch.bg-dark { background: #0c0e12; }
+.bg-swatch.bg-gray { background: #5a6069; }
+.bg-swatch.bg-light { background: #e7ebf1; }
+
+/* Square, label-less toolbar button — the glyph carries the meaning and the
+   accessible name lives on aria-label. */
+.iconbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto;
+  width: 32px; height: 32px; padding: 0;
+  color: var(--muted);
+}
+.iconbtn:hover:not(:disabled) { color: var(--text); }
+.iconbtn:disabled { opacity: .45; cursor: default; border-color: var(--line); }
+
 /* ---- workspace ---- */
 .work { flex: 1; min-height: 0; display: flex; }
 .panel-slot {
@@ -144,6 +202,61 @@ button.ghost { background: transparent; }
 .node .ty { font-size: 10px; color: var(--muted); }
 .x-hint { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
+/* ---- outliner component-type tree ---- */
+.type-group { margin: 2px 0; }
+.type-head {
+  width: 100%;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  border: 0; border-radius: 0;
+  background: transparent; color: var(--text);
+  cursor: pointer; font: inherit; font-size: 13px; font-weight: 600;
+  text-align: left;
+}
+.type-head:hover { background: var(--row); }
+.type-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.type-head .tree-arrow { width: 10px; color: var(--muted); flex: 0 0 auto; }
+.type-head .swatch { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+.type-head .nm { flex: 1; letter-spacing: .2px; }
+.type-members { border-left: 2px solid var(--line); }
+.node.node-member { padding-left: 30px; font-size: 12px; }
+.node.node-member.entered { background: var(--row); }
+
+/* ---- group inspector ---- */
+.group-name-input {
+  width: 100%;
+  font-size: 15px; font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: 0; border-bottom: 2px solid var(--accent);
+  border-radius: 0;
+  padding: 2px 0;
+}
+.group-name-input:focus { outline: none; background: var(--row); }
+.nudge-row { display: flex; gap: 4px; }
+.nudge-row button {
+  flex: 1; padding: 5px 0; font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- group outline label (3D viewport) ---- */
+.group-label {
+  font: 10px/1 "Inter", system-ui, sans-serif;
+  color: rgba(220, 225, 235, 0.6);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 3px 8px; border-radius: 3px;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  user-select: none;
+  transform: translate(0, -100%);
+}
+.group-label.sel { font-weight: 600; background: rgba(0, 0, 0, 0.6); }
+:root[data-theme="light"] .group-label {
+  color: rgba(20, 25, 35, 0.75);
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(0, 0, 0, 0.14);
+}
+
 /* ---- inspector ---- */
 .insp-head { padding: 16px 16px 6px; }
 .insp-head .nm { font-size: 15px; font-weight: 600; }
@@ -154,6 +267,8 @@ button.ghost { background: transparent; }
 .field label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 4px; }
 .field input { width: 100%; font-variant-numeric: tabular-nums; }
 .field input:focus { outline: none; border-color: var(--accent); }
+.board-model-field { grid-column: 1 / -1; }
+.board-model-field select { width: 100%; }
 .props { padding: 8px 16px 16px; }
 .prop { display: flex; justify-content: space-between; font-size: 12px;
   padding: 5px 0; border-bottom: 1px solid var(--line); }
@@ -163,7 +278,6 @@ button.ghost { background: transparent; }
 .row-actions { padding: 10px 16px; }
 .danger { color: var(--danger); border-color: transparent; background: transparent; }
 .danger:hover { border-color: var(--danger); }
-
 /* ---- project gallery (landing) ---- */
 .gallery { flex: 1; overflow-y: auto; padding: 36px 48px; }
 .gallery-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
@@ -180,9 +294,13 @@ button.big { padding: 10px 16px; font-size: 14px; }
   display: flex; flex-direction: column; }
 .card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .card-top { display: flex; justify-content: space-between; align-items: center; }
-.card-name { font-weight: 600; font-size: 15px; }
+.card-name { font-weight: 600; font-size: 15px; flex: 1; }
+.card-dup,
 .card-del { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; }
+.card-dup { font-size: 15px; }
+.card-dup:hover { color: var(--accent); }
 .card-del:hover { color: var(--danger); }
+.card-dup:disabled, .card-del:disabled { opacity: .4; cursor: default; }
 .swatches { flex: 1; display: flex; flex-wrap: wrap; gap: 5px; align-content: flex-start; margin: 14px 0; }
 .chip { width: 14px; height: 14px; border-radius: 4px; }
 .card-foot { font-size: 12px; color: var(--muted); }
@@ -220,32 +338,36 @@ button.big { padding: 10px 16px; font-size: 14px; }
   font-family: monospace;
 }
 
-/* ---- 3D floating component labels (drei Html) ---- */
-.comp-label {
-  font: 10px/1 "Inter", system-ui, sans-serif;
-  color: rgba(220, 225, 235, 0.55);
-  background: rgba(0, 0, 0, 0.4);
-  padding: 2px 7px; border-radius: 3px;
+.model-picker-popover {
+  transform: translateX(74px);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.28);
   white-space: nowrap;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  pointer-events: auto;
+}
+.model-picker-popover::before {
+  content: "";
+  position: absolute;
+  right: 100%;
+  border: 6px solid transparent;
+  border-right-color: var(--line);
+}
+.model-picker-popover label {
+  color: var(--muted);
+  font-size: 10px;
   user-select: none;
 }
-.comp-label.sel {
-  color: #fff;
-  background: rgba(76, 141, 255, 0.5);
-  border-color: rgba(76, 141, 255, 0.7);
+.model-picker-popover select {
+  min-width: 132px;
+  padding: 5px 8px;
+  font-size: 12px;
 }
-:root[data-theme="light"] .comp-label {
-  color: rgba(20, 25, 35, 0.7);
-  background: rgba(255, 255, 255, 0.8);
-  border-color: rgba(0, 0, 0, 0.12);
-}
-:root[data-theme="light"] .comp-label.sel {
-  color: #1a3a7f;
-  background: rgba(219, 231, 255, 0.92);
-  border-color: #2563eb;
-}
-
 /* ---- physics panel (paraxial simulation results) ---- */
 .physics-panel {
   border-top: 1px solid var(--line);
@@ -664,3 +786,91 @@ button.big { padding: 10px 16px; font-size: 14px; }
   border-radius: 9px;
   background: var(--panel-2);
 }
+
+/* ---- per-segment beam editor, floating beside the leg in the viewport ----
+   Anchored in 3D by drei's <Html>, so it follows the beam as the camera
+   orbits. Small and non-modal: it never blocks the scene behind it. */
+.segment-popover {
+  width: 200px;
+  padding: 9px;
+  transform: translate(16px, -50%);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  font-family: "Inter", system-ui, sans-serif;
+  user-select: none;
+}
+.sp-head { display: flex; align-items: flex-start; gap: 6px; }
+.sp-route {
+  flex: 1; font-size: 10px; color: var(--muted);
+  overflow-wrap: anywhere; line-height: 1.35;
+}
+.sp-arrow { opacity: .7; }
+.sp-close {
+  padding: 1px 4px; font-size: 11px; line-height: 1;
+  border: 0; background: transparent; color: var(--muted);
+}
+.sp-close:hover { color: var(--danger); }
+
+.sp-shapes { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.sp-shapes button {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 7px 2px;
+}
+.sp-shapes button.active { background: var(--accent-dim); border-color: var(--accent); }
+.sp-glyph { font-size: 15px; line-height: 1; letter-spacing: -1px; }
+.sp-preset-label { font-size: 9px; color: var(--muted); }
+
+
+/* Header doubles as the drag handle, so the card can be pulled off whatever
+   it is covering on a crowded bench. */
+.sp-head { cursor: grab; }
+.sp-head:active { cursor: grabbing; }
+.sp-grip { color: var(--muted); font-size: 11px; line-height: 1.2; }
+
+.sp-fields { display: flex; flex-direction: column; gap: 9px; margin: 9px 0; }
+
+/* Drag bar + ball handle. Widths are judged by eye against the optics, so the
+   bar leads and the number follows — but the number stays typeable. */
+.sweep-head {
+  display: grid; grid-template-columns: 1fr auto auto;
+  align-items: center; gap: 4px;
+}
+.sweep-label { font-size: 11px; color: var(--muted); }
+.sweep-value {
+  /* Wide enough for a four-digit length ("1504.7") without clipping. */
+  width: 54px; padding: 1px 4px; font-size: 11px;
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.sweep-value:focus { outline: none; border-color: var(--accent); }
+.sweep-unit { font-size: 10px; color: var(--muted); }
+
+.sweep-range {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 14px; margin: 3px 0 0;
+  background: transparent; cursor: pointer;
+}
+.sweep-range:focus { outline: none; }
+.sweep-range::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px;
+  background: linear-gradient(
+    to right, var(--accent) var(--fill, 0%), var(--line) var(--fill, 0%));
+}
+.sweep-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 13px; height: 13px; margin-top: -4.5px;
+  border-radius: 50%; background: var(--text);
+  border: 2px solid var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+}
+.sweep-range:focus::-webkit-slider-thumb,
+.sweep-range:hover::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--accent-dim); }
+.sweep-range::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
+.sweep-range::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--accent); }
+.sweep-range::-moz-range-thumb {
+  width: 13px; height: 13px; border: 2px solid var(--accent);
+  border-radius: 50%; background: var(--text);
+}
+.sweep-range:focus::-moz-range-thumb,
+.sweep-range:hover::-moz-range-thumb { box-shadow: 0 0 0 4px var(--accent-dim); }

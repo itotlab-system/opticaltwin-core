@@ -1,15 +1,29 @@
+import importlib.util
+import inspect
 import tempfile
 import unittest
 from pathlib import Path
 
 from pxr import Usd, UsdGeom
 
-from cad_importer import (
-    MeshPart,
-    analyze_lens_profile,
-    split_rod_hi_parts,
-    write_lo_primitives,
-)
+# The module under test needs the OpenCASCADE bindings, which are an optional
+# extra (`pip install cadquery-ocp`) -- large, and only the STEP import path
+# uses them. Import it only when they are present and skip the cases otherwise,
+# so the documented test command passes on a base install. A module-level
+# `raise SkipTest` would not do: unittest's loader treats that as an error when
+# the module is named on the command line, rather than as a skip.
+HAS_OCP = importlib.util.find_spec("OCP") is not None
+requires_ocp = unittest.skipUnless(HAS_OCP, "requires cadquery-ocp")
+
+if HAS_OCP:
+    import cad_importer
+    from cad_importer import (
+        MeshPart,
+        analyze_cylindrical_laser_emission,
+        analyze_lens_profile,
+        split_rod_hi_parts,
+        write_lo_primitives,
+    )
 
 
 def ring(x, radius=10.0):
@@ -21,6 +35,7 @@ def ring(x, radius=10.0):
     ]
 
 
+@requires_ocp
 class LensLoPrimitiveTests(unittest.TestCase):
     def _write(self, name, points):
         directory = tempfile.TemporaryDirectory()
@@ -64,8 +79,10 @@ class LensLoPrimitiveTests(unittest.TestCase):
         bounds = UsdGeom.BBoxCache(
             Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]
         ).ComputeLocalBound(root).ComputeAlignedRange()
-        self.assertEqual(tuple(bounds.GetMin()), (-2.0, -10.0, -10.0))
-        self.assertEqual(tuple(bounds.GetMax()), (2.0, 10.0, 10.0))
+        for actual, expected in zip(bounds.GetMin(), (-2.0, -10.0, -10.0)):
+            self.assertAlmostEqual(actual, expected)
+        for actual, expected in zip(bounds.GetMax(), (2.0, 10.0, 10.0)):
+            self.assertAlmostEqual(actual, expected)
 
     def test_plano_convex_supports_flat_face_on_positive_x(self):
         points = [(-2.0, 0.0, 0.0)] + ring(0.0) + ring(2.0)
@@ -112,10 +129,13 @@ class LensLoPrimitiveTests(unittest.TestCase):
         bounds = UsdGeom.BBoxCache(
             Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]
         ).ComputeLocalBound(root).ComputeAlignedRange()
-        self.assertEqual(tuple(bounds.GetMin()), (-2.0, -10.0, -10.0))
-        self.assertEqual(tuple(bounds.GetMax()), (2.0, 10.0, 10.0))
+        for actual, expected in zip(bounds.GetMin(), (-2.0, -10.0, -10.0)):
+            self.assertAlmostEqual(actual, expected)
+        for actual, expected in zip(bounds.GetMax(), (2.0, 10.0, 10.0)):
+            self.assertAlmostEqual(actual, expected)
 
 
+@requires_ocp
 class RodGenerationTests(unittest.TestCase):
     def test_hi_is_split_into_five_mesh_parts(self):
         body = MeshPart(
@@ -185,6 +205,65 @@ class RodGenerationTests(unittest.TestCase):
                 UsdGeom.Cylinder(cylinders[0]).GetAxisAttr().Get(),
                 UsdGeom.Tokens.x,
             )
+            self.assertAlmostEqual(
+                UsdGeom.Cylinder(cylinders[0]).GetHeightAttr().Get(),
+                20.0,
+            )
+            self.assertAlmostEqual(
+                root.GetAttribute("optics:rodEndMinX_mm").Get(),
+                -10.0,
+            )
+            self.assertAlmostEqual(
+                root.GetAttribute("optics:rodEndMaxX_mm").Get(),
+                10.0,
+            )
+
+
+@requires_ocp
+class LaserEmissionTests(unittest.TestCase):
+    def test_nested_npl64a_keeps_vendor_origin_and_emission_surface(self):
+        source = inspect.getsource(cad_importer.main)
+
+        self.assertIn("center_generated_component = rod_component", source)
+        self.assertNotIn(
+            "center_generated_component = rod_component or nested_laser",
+            source,
+        )
+        self.assertIn(
+            'Path(component_name).name.lower() == "npl64a-step"',
+            source,
+        )
+        self.assertIn(
+            'optics_attrs.setdefault("emissionOffset_mm", 58.00558)',
+            source,
+        )
+
+    def test_round_head_at_positive_x_defines_emission_center(self):
+        unrelated = MeshPart(
+            [(-20, -20, -5), (20, 20, 5), (0, 0, 0)],
+            [0, 1, 2],
+            (0.0, 0.0, 0.0),
+        )
+        head = MeshPart(
+            [
+                (40, -7, -1), (100, -7, -1), (100, 3, -1),
+                (40, -7, 9), (100, 3, 9), (40, 3, 9),
+            ],
+            [0, 1, 2, 3, 4, 5],
+            (0.8, 0.8, 0.8),
+        )
+        profile = analyze_cylindrical_laser_emission(
+            [unrelated, head],
+            "+X",
+            (0.0, 0.0, 0.0),
+            0.0,
+        )
+        self.assertEqual(profile.offset_x, 100)
+        self.assertEqual(profile.front_x, 100)
+        self.assertEqual(profile.back_x, 40)
+        self.assertEqual(profile.center_y, -2)
+        self.assertEqual(profile.center_z, 4)
+        self.assertEqual(profile.diameter, 10)
 
 
 if __name__ == "__main__":

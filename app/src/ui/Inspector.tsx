@@ -1,12 +1,21 @@
 import type { ReactNode } from "react";
-import type { BeamNode, Component } from "../types";
+import type {
+  BeamNode,
+  Board,
+  Component,
+  ComponentGroup,
+  ComponentUpdate,
+} from "../types";
 import { useSettings } from "../settings";
 import { colorFor } from "./typeColor";
+import GroupInspector from "./GroupInspector";
 
 const AXES: Array<{ k: keyof Component; tkey: string; step: number }> = [
   { k: "x", tkey: "field_x", step: 25 },
   { k: "y", tkey: "field_y", step: 25 },
   { k: "z", tkey: "field_z", step: 5 },
+  { k: "rotX", tkey: "field_rotx", step: 15 },
+  { k: "rotY", tkey: "field_roty", step: 15 },
   { k: "rotZ", tkey: "field_rotz", step: 15 },
 ];
 
@@ -15,22 +24,73 @@ const nodePin = (n: BeamNode) => (typeof n === "string" ? undefined : n.pin);
 const oneDecimal = (value: number) => Math.round(value * 10) / 10;
 
 export default function Inspector({
-  component, prev, onEdit, onDelete, beamPath, onPinBeamNode, footer,
+  component, prev, onEdit, onDelete, onDuplicate, beamPath, onPinBeamNode, footer,
+  selection, group, components, onNudge, onCreateGroup, onUngroup, onRenameGroup,
+  board, boardModels, onChangeBoardModel,
 }: {
   component: Component | null;
   prev: Component | null;
-  onEdit: (field: "x" | "y" | "z" | "rotZ", value: number) => void;
+  onEdit: (field: "x" | "y" | "z" | "rotX" | "rotY" | "rotZ", value: number) => void;
   onDelete: () => void;
+  onDuplicate: () => void;
   beamPath: BeamNode[][];
   onPinBeamNode: (segment: number, node: number, position: [number, number, number] | null) => void;
   footer?: ReactNode;
+  selection: string[];
+  group: ComponentGroup | null;
+  components: Component[];
+  onNudge: (updates: ComponentUpdate[]) => void;
+  onCreateGroup: () => void;
+  onUngroup: () => void;
+  onRenameGroup: (id: string, name: string) => void;
+  board: Board | null;
+  boardModels: string[];
+  onChangeBoardModel: (asset: string) => void;
 }) {
   const { t } = useSettings();
+
+  // More than one part selected: edit them as a rigid body, not one by one.
+  if (selection.length > 1) {
+    return (
+      <div className="inspector">
+        <GroupInspector
+          group={group}
+          selection={selection}
+          components={components}
+          onNudge={onNudge}
+          onCreateGroup={onCreateGroup}
+          onUngroup={onUngroup}
+          onRename={onRenameGroup}
+          onDelete={onDelete}
+          onDuplicate={onDuplicate}
+        />
+        {footer}
+      </div>
+    );
+  }
+
   if (!component) {
     return (
       <div className="inspector">
         <div className="section-title">{t("inspector_title")}</div>
         <div className="empty">{t("inspector_select")}</div>
+        {board?.model && boardModels.length > 0 && (
+          <div className="fieldgrid">
+            <div className="field board-model-field">
+              <label>{t("board_model_number")}</label>
+              <select
+                value={board.model.asset ?? ""}
+                onChange={(event) => onChangeBoardModel(event.target.value)}
+              >
+                {boardModels.map((asset) => (
+                  <option key={asset} value={asset}>
+                    {asset.split("/").pop()?.replace(/-Step\.usda$/, "")}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
         {footer}
       </div>
     );
@@ -65,11 +125,14 @@ export default function Inspector({
             <input
               type="number"
               step={0.1}
+              disabled={component.type === "post"
+                && typeof component.attrs.pairedHolder === "string"
+                && k !== "z"}
               value={oneDecimal(component[k] as number)}
               onChange={(e) => {
                 const value = parseFloat(e.target.value);
                 onEdit(
-                  k as "x" | "y" | "z" | "rotZ",
+                  k as "x" | "y" | "z" | "rotX" | "rotY" | "rotZ",
                   oneDecimal(isNaN(value) ? 0 : value),
                 );
               }}
@@ -77,6 +140,7 @@ export default function Inspector({
           </div>
         ))}
       </div>
+      <div className="dist">{t("rotation_shortcuts")}</div>
       {dist != null && (
         <div className="dist">{t("distance", { d: dist.toFixed(1), name: prev!.name })}</div>
       )}
@@ -115,6 +179,12 @@ export default function Inspector({
             </span>
           </div>
         ))}
+      </div>
+      <div className="row-actions">
+        <button className="ghost" onClick={onDuplicate}>
+          {t("duplicate_component")}
+        </button>
+        <span className="key-hint">Ctrl+D</span>
       </div>
       <div className="row-actions">
         <button className="danger" onClick={onDelete}>

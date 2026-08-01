@@ -35,9 +35,9 @@ def regen(path, fn, *args, **kw):
 
 
 # Library assets used by this demo.
-regen(asset("lens_f100.usda"), ol.make_lens, focal_length_mm=100.0)
-regen(asset("mirror_1in.usda"), ol.make_mirror)
-regen(asset("detector.usda"), ol.make_detector)
+regen(asset("Low_model/lens_f100.usda"), ol.make_lens, focal_length_mm=100.0)
+regen(asset("Low_model/mirror_1in.usda"), ol.make_mirror)
+regen(asset("Low_model/detector.usda"), ol.make_detector)
 
 # Assemble a simple linear setup.
 setup_path = os.path.join(SETUPS_DIR, "optical_bench.usda")
@@ -54,10 +54,10 @@ def ref(name):
     return uu.get_relative_component_usda_path(LIB_DIR, name, SETUPS_DIR)
 
 
-ol.place(stage, root, "Lens_01",   ref("lens_f100.usda"),  50, 0)
-ol.place(stage, root, "Lens_02",   ref("lens_f100.usda"), 150, 0)   # same asset reused
-ol.place(stage, root, "Detector",  ref("detector.usda"),  300, 0)
-ol.place(stage, root, "FoldMirror", ref("mirror_1in.usda"), 225, 0, rotate_z_deg=45)
+ol.place(stage, root, "Lens_01",   ref("Low_model/lens_f100.usda"),  50, 0)
+ol.place(stage, root, "Lens_02",   ref("Low_model/lens_f100.usda"), 150, 0)   # same asset reused
+ol.place(stage, root, "Detector",  ref("Low_model/detector.usda"),  300, 0)
+ol.place(stage, root, "FoldMirror", ref("Low_model/mirror_1in.usda"), 225, 0, rotate_z_deg=45)
 
 ol.add_beam(stage, root, [[(0, 0, 0), (50, 0, 0), (150, 0, 0), (300, 0, 0)]])
 

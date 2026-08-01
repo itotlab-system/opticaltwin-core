@@ -16,6 +16,12 @@ function num(c: Component, key: string, def: number): number {
   return typeof v === "number" ? v : def;
 }
 
+function holderCentreOffsetX(c: Component): number {
+  if (c.type !== "holder") return 0;
+  const asset = c.asset ?? "";
+  return /(?:^|\/)PH(?:20|30)E/i.test(asset) ? 0 : 0;
+}
+
 function discRadius(c: Component): number {
   return (c.type === "iris" ? num(c, "outerDiameter_mm", 25.4) : num(c, "diameter_mm", 25.4)) / 2;
 }
@@ -171,7 +177,8 @@ function UsdPrimitive({ data, componentType, metalness, roughness, selected, gho
         if (sourceIndex) {
           const halfHeight = height / 2;
           const epsilon = Math.max(height * 1e-6, 1e-7);
-          const keepTop = data.capSide === "negativeX";
+          const removeTop = data.capSide !== "negativeX";
+          const removeBottom = data.capSide !== "positiveX";
           const filtered: number[] = [];
           for (let offset = 0; offset < sourceIndex.count; offset += 3) {
             const triangle = [
@@ -185,7 +192,7 @@ function UsdPrimitive({ data, componentType, metalness, roughness, selected, gho
             const atBottom = triangle.every(
               (index) => Math.abs(positions.getY(index) + halfHeight) <= epsilon,
             );
-            if ((atTop && !keepTop) || (atBottom && keepTop)) continue;
+            if ((atTop && removeTop) || (atBottom && removeBottom)) continue;
             filtered.push(...triangle);
           }
           result.setIndex(filtered);
@@ -499,15 +506,29 @@ function Part({ c, selected }: { c: Component; selected: boolean }) {
 }
 
 export default function Component3D({
-  c, selected, onSelect, onMove,
-  setRef, ghost = false,
+  c, selected, onSelect, onDoubleClick, onMove,
+  setRef, ghost = false, interactive = true, modelOptions = [], onChangeModel,
 } : {
   c: Component;
   selected: boolean;
-  onSelect: (name: string) => void;
-  onMove: (name: string, x: number, y: number, z: number, rotZ: number) => void;
+  // additive = Ctrl/Cmd was held, i.e. add to / remove from the selection.
+  onSelect: (name: string, additive: boolean) => void;
+  // Double-click drills into the group this part belongs to.
+  onDoubleClick?: (name: string) => void;
+  onMove: (
+    name: string,
+    x: number,
+    y: number,
+    z: number,
+    rotX: number,
+    rotY: number,
+    rotZ: number,
+  ) => void;
   setRef: (name: string, ref: THREE.Group | null) => void;
   ghost?: boolean;
+  interactive?: boolean;
+  modelOptions?: string[];
+  onChangeModel?: (asset: string) => void;
 }) {
   const ref = useRef<THREE.Group>(null!);
   const fr = footRadius(c);
@@ -516,6 +537,13 @@ export default function Component3D({
   );
   const modelRotation = c.modelRotation ?? [0, 0, 0];
   const rotationCenter = c.rotationCenter ?? [0, 0, 0];
+  const geometryOffset: [number, number, number] = [
+    num(c, "geometryOffsetX_mm", 0),
+    num(c, "geometryOffsetY_mm", 0),
+    num(c, "geometryOffsetZ_mm", 0),
+  ];
+  const selectionRingZ = c.type === "holder" ? 1 : 2;
+  const selectionRingX = holderCentreOffsetX(c);
   const inverseRotationCenter: [number, number, number] = [
     -rotationCenter[0],
     -rotationCenter[1],
@@ -530,43 +558,69 @@ export default function Component3D({
     <group
       ref={(r) => { ref.current = r!; setRef(c.name, r); }}
       position={[c.x, c.y, c.z]}
-      rotation={[0, 0, c.rotZ * DEG]}
-      onClick={ghost ? undefined : (e) => { e.stopPropagation(); onSelect(c.name); }}
-      onPointerOver={ghost ? undefined : (e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
-      onPointerOut={ghost ? undefined : () => { document.body.style.cursor = "auto"; }}
+      rotation={[c.rotX * DEG, c.rotY * DEG, c.rotZ * DEG]}
+      onClick={ghost || !interactive ? undefined : (e) => {
+        e.stopPropagation();
+        onSelect(c.name, e.ctrlKey || e.metaKey);
+      }}
+      onDoubleClick={ghost || !interactive ? undefined : (e) => {
+        e.stopPropagation();
+        onDoubleClick?.(c.name);
+      }}
+      onPointerOver={ghost || !interactive ? undefined : (e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
+      onPointerOut={ghost || !interactive ? undefined : () => { document.body.style.cursor = "auto"; }}
     >
-      <group
-        position={rotationCenter}
-        rotation={[
-          modelRotation[0] * DEG,
-          modelRotation[1] * DEG,
-          modelRotation[2] * DEG,
-        ]}
-      >
-        <group position={inverseRotationCenter}>
-          {renderUsdGeometry ? (
-            <UsdGeometry c={c} selected={selected} ghost={ghost} />
-          ) : MODELS[c.type] ? (
-            <Suspense fallback={<Part c={c} selected={selected} />}>
-              <GltfModel def={MODELS[c.type]} ghost={ghost} />
-            </Suspense>
-          ) : (
-            <>
-              <Part c={c} selected={selected} />
-              {DISC.has(c.type) && <MountRing r={discRadius(c)} selected={selected} />}
-            </>
-          )}
+      <group position={geometryOffset}>
+        <group
+          position={rotationCenter}
+          rotation={[
+            modelRotation[0] * DEG,
+            modelRotation[1] * DEG,
+            modelRotation[2] * DEG,
+          ]}
+        >
+          <group position={inverseRotationCenter}>
+            {renderUsdGeometry ? (
+              <UsdGeometry c={c} selected={selected} ghost={ghost} />
+            ) : MODELS[c.type] ? (
+              <Suspense fallback={<Part c={c} selected={selected} />}>
+                <GltfModel def={MODELS[c.type]} ghost={ghost} />
+              </Suspense>
+            ) : (
+              <>
+                <Part c={c} selected={selected} />
+                {DISC.has(c.type) && <MountRing r={discRadius(c)} selected={selected} />}
+              </>
+            )}
+          </group>
         </group>
       </group>
 
-      {!ghost && (
-        <Html position={[0, 0, 65]} center style={{ pointerEvents: "none" }}>
-          <div className={`comp-label${selected ? " sel" : ""}`}>{c.name}</div>
+      {selected && (c.type === "holder" || c.type === "post") && (
+        <Html position={[0, 0, 35]} center zIndexRange={[20, 10]}>
+          <div
+            className="model-picker-popover"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <label htmlFor={`model-picker-${c.name}`}>型番</label>
+            <select
+              id={`model-picker-${c.name}`}
+              value={c.asset ?? ""}
+              onChange={(event) => onChangeModel?.(event.target.value)}
+            >
+              {modelOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option.split("/").pop()?.replace(/-Step\.usda$/, "")}
+                </option>
+              ))}
+            </select>
+          </div>
         </Html>
       )}
 
       {selected && (
-        <mesh position={[0, 0, 2]}>
+        <mesh position={[selectionRingX, 0, selectionRingZ]}>
           <ringGeometry args={[fr, fr + 5, 48]} />
           <meshBasicMaterial color="#4c8dff" transparent opacity={0.65} side={THREE.DoubleSide} />
         </mesh>
