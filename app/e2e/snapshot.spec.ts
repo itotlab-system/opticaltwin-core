@@ -108,9 +108,12 @@ test("snapshot button downloads a non-blank PNG named after the project", async 
 
     // The button stays disabled until the WebGL renderer's first frame
     // completes; Playwright's click() auto-waits for it to become enabled.
+    // It opens the export sheet (format / resolution / background) rather than
+    // downloading straight away — the defaults are a 2x PNG.
+    await page.getByRole("button", { name: "Snapshot" }).click();
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.getByRole("button", { name: "Snapshot" }).click(),
+      page.getByRole("button", { name: "書き出す" }).click(),
     ]);
 
     const filenamePattern = new RegExp(

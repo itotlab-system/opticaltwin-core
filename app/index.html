@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OpticalTwin</title>
+    <script>
+      // SettingsProvider sets data-theme in an effect, i.e. after the first
+      // paint — which flashed the default dark palette at a light-theme member
+      // before the login page swapped. Apply the saved choice before paint.
+      try {
+        var r = document.documentElement;
+        r.setAttribute(
+          "data-theme",
+          localStorage.getItem("ot.theme") === "light" ? "light" : "dark"
+        );
+        r.lang = localStorage.getItem("ot.lang") === "ja" ? "ja" : "en";
+      } catch (e) { /* private mode: fall through to the CSS default */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>

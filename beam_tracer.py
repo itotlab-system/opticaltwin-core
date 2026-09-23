@@ -281,6 +281,140 @@ def _box_hit(origin, direction, comp):
     return distance, point, _scale(axes[near_axis], near_sign)
 
 
+def _matrix_point(matrix, point):
+    x, y, z = point
+    return [
+        matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12],
+        matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
+        matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14],
+    ]
+
+
+def _matrix_vector(matrix, vector):
+    x, y, z = vector
+    return [
+        matrix[0] * x + matrix[4] * y + matrix[8] * z,
+        matrix[1] * x + matrix[5] * y + matrix[9] * z,
+        matrix[2] * x + matrix[6] * y + matrix[10] * z,
+    ]
+
+
+def _invert_affine_matrix(matrix):
+    a, b, c = matrix[0], matrix[4], matrix[8]
+    d, e, f = matrix[1], matrix[5], matrix[9]
+    g, h, i = matrix[2], matrix[6], matrix[10]
+    tx, ty, tz = matrix[12], matrix[13], matrix[14]
+    det = (
+        a * (e * i - f * h)
+        - b * (d * i - f * g)
+        + c * (d * h - e * g)
+    )
+    if abs(det) < 1e-12:
+        return None
+    inv_det = 1.0 / det
+    inv = [
+        (e * i - f * h) * inv_det,
+        (f * g - d * i) * inv_det,
+        (d * h - e * g) * inv_det,
+        0.0,
+        (c * h - b * i) * inv_det,
+        (a * i - c * g) * inv_det,
+        (b * g - a * h) * inv_det,
+        0.0,
+        (b * f - c * e) * inv_det,
+        (c * d - a * f) * inv_det,
+        (a * e - b * d) * inv_det,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]
+    inv[12:15] = _matrix_vector(inv, [-tx, -ty, -tz])
+    return inv
+
+
+def _component_local_ray(origin, direction, comp):
+    axes = _local_axes(comp)
+    relative = _sub(origin, _placement_origin(comp))
+    return (
+        [_dot(relative, axis) for axis in axes],
+        [_dot(direction, axis) for axis in axes],
+    )
+
+
+def _component_point_to_world(comp, point):
+    result = _placement_origin(comp)
+    for axis, value in zip(_local_axes(comp), point):
+        result = _add(result, _scale(axis, value))
+    return result
+
+
+def _component_vector_to_world(comp, vector):
+    result = [0.0, 0.0, 0.0]
+    for axis, value in zip(_local_axes(comp), vector):
+        result = _add(result, _scale(axis, value))
+    return result
+
+
+def _cube_primitive_hit(origin, direction, comp, primitive):
+    matrix = primitive.get("matrix")
+    if primitive.get("kind") != "cube" or not isinstance(matrix, list) or len(matrix) != 16:
+        return None
+    inverse = _invert_affine_matrix([_number(value, 0.0) for value in matrix])
+    if inverse is None:
+        return None
+
+    comp_origin, comp_direction = _component_local_ray(origin, direction, comp)
+    local_origin = _matrix_point(inverse, comp_origin)
+    local_direction = _matrix_vector(inverse, comp_direction)
+    half = _number(primitive.get("size"), 1.0) / 2.0
+
+    near, far = -math.inf, math.inf
+    near_axis = 0
+    near_sign = 1.0
+    for axis in range(3):
+        if abs(local_direction[axis]) < 1e-10:
+            if abs(local_origin[axis]) > half:
+                return None
+            continue
+        t1 = (-half - local_origin[axis]) / local_direction[axis]
+        t2 = (half - local_origin[axis]) / local_direction[axis]
+        enter, leave = min(t1, t2), max(t1, t2)
+        if enter > near:
+            near = enter
+            near_axis = axis
+            near_sign = -1.0 if t1 < t2 else 1.0
+        far = min(far, leave)
+        if near > far:
+            return None
+
+    distance = near if near > EPSILON_MM else far
+    if distance <= EPSILON_MM:
+        return None
+
+    local_point = _add(local_origin, _scale(local_direction, distance))
+    comp_point = _matrix_point(matrix, local_point)
+    normal_local = [0.0, 0.0, 0.0]
+    normal_local[near_axis] = near_sign
+    comp_normal = _normalise(_matrix_vector(matrix, normal_local))
+    return (
+        distance,
+        _component_point_to_world(comp, comp_point),
+        _component_vector_to_world(comp, comp_normal),
+    )
+
+
+def _primitive_box_hit(origin, direction, comp):
+    hits = [
+        hit
+        for primitive in comp.get("primitives", [])
+        for hit in (_cube_primitive_hit(origin, direction, comp, primitive),)
+        if hit
+    ]
+    return min(hits, key=lambda hit: hit[0]) if hits else None
+
+
 def _mirror_hit(origin, direction, comp):
     """Intersect the two reflective faces of a finite-thickness mirror."""
     attrs = comp.get("attrs", {})
@@ -335,20 +469,29 @@ def _behavior(comp, hit_point):
         # bounding-box center.
         local = _placement_local_point(comp, hit_point)
         central_radius = _number(attrs.get("beamApertureRadius_mm"), 0.0)
-        aperture_axis = str(attrs.get("beamApertureAxis") or "X").upper()
-        radial_axes = {
+        authored_axes = attrs.get("beamApertureAxes")
+        aperture_axes = (
+            [axis for axis in "XYZ" if axis in str(authored_axes).upper()]
+            if authored_axes is not None
+            else [str(attrs.get("beamApertureAxis") or "X").upper()]
+        )
+        radial_axes_by_aperture = {
             "X": (1, 2),
             "Y": (0, 2),
             "Z": (0, 1),
-        }.get(aperture_axis, (1, 2))
-        if (
-            central_radius > 0
-            and math.hypot(
-                local[radial_axes[0]],
-                local[radial_axes[1]],
-            ) <= central_radius
-        ):
-            return "transmit"
+        }
+        for aperture_axis in aperture_axes:
+            radial_axes = radial_axes_by_aperture.get(aperture_axis)
+            if radial_axes is None:
+                continue
+            if (
+                central_radius > 0
+                and math.hypot(
+                    local[radial_axes[0]],
+                    local[radial_axes[1]],
+                ) <= central_radius
+            ):
+                return "transmit"
         hole_radius = _number(attrs.get("rodHoleRadius_mm"), 0.0)
         raw_offsets = attrs.get("rodHoleOffsets_mm")
         if hole_radius > 0 and isinstance(raw_offsets, str):
@@ -374,6 +517,19 @@ def _intersection(origin, direction, comp):
     if str(attrs.get("ignoreBeamCollision", "")).lower() in {"true", "1"}:
         return None
     component_type = str(comp.get("type") or "")
+    # Some instruments contain a real optical surface inside an otherwise
+    # opaque housing.  Trace that authored surface before testing the housing,
+    # so the ray reaches the optic instead of stopping at the front of its
+    # bounding box.  The center and normal are local to the component's
+    # placement axes; the radius limits the hit to the circular CAD part.
+    if "splitPlaneRadius_mm" in attrs:
+        hit = _split_plane_hit(origin, direction, comp)
+        if hit:
+            return (*hit, "split")
+    if "blockPlaneRadius_mm" in attrs:
+        hit = _block_plane_hit(origin, direction, comp)
+        if hit:
+            return (*hit, "block")
     if component_type == "mirror":
         return _mirror_hit(origin, direction, comp)
     if component_type == "beamsplitter":
@@ -399,7 +555,11 @@ def _intersection(origin, direction, comp):
     if component_type in (TRANSMISSIVE_TYPES | {"iris"}):
         hit = _plane_hit(origin, direction, comp)
     else:
-        hit = _box_hit(origin, direction, comp)
+        hit = (
+            _primitive_box_hit(origin, direction, comp)
+            if comp.get("primitives")
+            else _box_hit(origin, direction, comp)
+        )
     return (*hit, None) if hit else None
 
 
@@ -407,11 +567,46 @@ def _reflection(direction, normal):
     return _normalise(_sub(direction, _scale(normal, 2 * _dot(direction, normal))))
 
 
-def _split_reflection(direction, comp):
-    """Reflect on the cube's local 45-degree internal interface."""
-    x_axis, y_axis, _ = _local_axes(comp)
-    interface_normal = _normalise(_add(x_axis, y_axis))
-    return _reflection(direction, interface_normal)
+def _authored_circular_plane_hit(origin, direction, comp, prefix):
+    attrs = comp.get("attrs", {})
+    x_axis, y_axis, z_axis = _local_axes(comp)
+    center = _placement_origin(comp)
+    for axis, key in (
+        (x_axis, f"{prefix}PlaneCenterX_mm"),
+        (y_axis, f"{prefix}PlaneCenterY_mm"),
+        (z_axis, f"{prefix}PlaneCenterZ_mm"),
+    ):
+        center = _add(center, _scale(axis, _number(attrs.get(key), 0.0)))
+
+    normal = _normalise(
+        _add(
+            _add(
+                _scale(x_axis, _number(attrs.get(f"{prefix}PlaneNormalX"), 1.0)),
+                _scale(y_axis, _number(attrs.get(f"{prefix}PlaneNormalY"), 0.0)),
+            ),
+            _scale(z_axis, _number(attrs.get(f"{prefix}PlaneNormalZ"), 0.0)),
+        )
+    )
+    denominator = _dot(direction, normal)
+    if abs(denominator) < 1e-9:
+        return None
+    distance = _dot(_sub(center, origin), normal) / denominator
+    if distance <= EPSILON_MM:
+        return None
+    point = _add(origin, _scale(direction, distance))
+    if math.sqrt(_dot(_sub(point, center), _sub(point, center))) > _number(
+        attrs.get(f"{prefix}PlaneRadius_mm"), 0.0
+    ):
+        return None
+    return distance, point, normal
+
+
+def _split_plane_hit(origin, direction, comp):
+    return _authored_circular_plane_hit(origin, direction, comp, "split")
+
+
+def _block_plane_hit(origin, direction, comp):
+    return _authored_circular_plane_hit(origin, direction, comp, "block")
 
 
 # Hardware that holds optics rather than acting on light. The beam is still
@@ -424,6 +619,16 @@ STRUCTURAL_TYPES = {
     "post",
     "cage",
     "breadboard",
+}
+
+# Component types that start a beam. Everything past emission is the same for
+# all of them -- a source is an origin, a direction and a wavelength -- so a new
+# one only has to appear here and author `optics:emissionOffset_mm`. The switch
+# attribute (`optics:laserOn`), its route and the toolbar keep the "laser" name
+# for the whole set rather than growing a second vocabulary for one switch.
+EMITTER_TYPES = {
+    "laser",
+    "led",
 }
 
 
@@ -515,7 +720,7 @@ def segment_key(from_name, to_name, occurrence=0):
 
 
 def is_laser_on(comp):
-    """Whether a laser is switched on. Absent means on — a laser someone
+    """Whether a source is switched on. Absent means on — a laser someone
     placed before this existed should still emit."""
     value = comp.get("attrs", {}).get("laserOn")
     if value is None:
@@ -526,20 +731,20 @@ def is_laser_on(comp):
 
 
 def has_laser(components):
-    """True when the scene contains a laser at all, on or off.
+    """True when the scene contains a source at all, on or off.
 
     A scene with a switched-off laser must show no beam, so callers need to
     tell "nothing emitted" apart from "nothing to emit from" — the latter is
     what makes an older hand-authored beam path worth falling back to.
     """
-    return any(c.get("type") == "laser" for c in components)
+    return any(c.get("type") in EMITTER_TYPES for c in components)
 
 
 def trace_lasers(components, aperture_offset_mm=43.0):
-    """Return renderable beam segments emitted by all switched-on lasers."""
+    """Return renderable beam segments emitted by all switched-on sources."""
     segments = []
     for laser in components:
-        if laser.get("type") != "laser" or not is_laser_on(laser):
+        if laser.get("type") not in EMITTER_TYPES or not is_laser_on(laser):
             continue
         direction = _local_axes(laser)[0]
         emission_offset = _number(
@@ -621,7 +826,10 @@ def trace_lasers(components, aperture_offset_mm=43.0):
                 ratio = max(0.0, min(1.0, _number(
                     nearest_comp.get("attrs", {}).get("splitRatio"), 0.5
                 )))
-                reflected = _split_reflection(ray_direction, nearest_comp)
+                # Use the normal returned by the actual surface hit.  This is
+                # the cube's 45-degree interface for ordinary beam splitters
+                # and the authored internal plate for compound instruments.
+                reflected = _reflection(ray_direction, normal)
                 queue.append((
                     _add(point, _scale(ray_direction, EPSILON_MM)),
                     ray_direction,
@@ -635,7 +843,11 @@ def trace_lasers(components, aperture_offset_mm=43.0):
                     reflected,
                     intensity * ratio,
                     depth + 1,
-                    next_ignored,
+                    # Compound splitters can contain a second internal target
+                    # (SI254's CADMesh_005). Permit the reflected arm to hit
+                    # that surface while the straight arm leaves the housing.
+                    set() if "blockPlaneRadius_mm" in nearest_comp.get("attrs", {})
+                    else next_ignored,
                     name,
                 ))
             elif behavior == "transmit":

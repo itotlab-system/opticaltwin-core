@@ -24,9 +24,9 @@ jobs:
         python-version: ["3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -43,6 +43,13 @@ jobs:
       - name: Run tests
         run: python -m unittest test_component_library test_beam_tracer test_cad_importer
 
+      - name: Build the component library and an example project
+        # Runs BEFORE the pytest suite on purpose. This is the smoke test that
+        # matters most -- it proves a fresh clone can reach a runnable state --
+        # and tests/ currently has known failures, so leaving this last meant it
+        # was skipped on every single run and told us nothing.
+        run: python setup_projects.py
+
       - name: Run the backend API tests
         # Only present in the lab's development repository; the public export
         # ships the unittest suites above.
@@ -54,19 +61,14 @@ jobs:
             echo "no tests/ directory — skipping"
           fi
 
-      - name: Build the component library and an example project
-        # Catches breakage in the generators that the unit tests would miss,
-        # and proves a fresh clone can reach a runnable state.
-        run: python setup_projects.py
-
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: npm

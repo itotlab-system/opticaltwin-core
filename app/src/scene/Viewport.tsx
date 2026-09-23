@@ -13,7 +13,7 @@ import * as THREE from "three";
 // Added PinAnnotation so this viewport can render shared 3D pin annotations.
 import type {
   BeamSegment, Board, Component, ComponentGroup, ComponentUpdate,
-  PinAnnotation,
+  FigureCallout, PinAnnotation,
 } from "../types";
 
 import { useSettings } from "../settings";
@@ -22,10 +22,16 @@ import Breadboard from "./Breadboard";
 import Beam from "./Beam";
 import Pin3D from "./Pin3D";
 import GroupOutline from "./GroupOutline";
+import CalloutAnchors from "./CalloutAnchors";
+import type { AnchorStore } from "./anchors";
+import { fromOverlay } from "./overlay";
 import { groupPivot, rigidTransform } from "../groups";
 import type { TransformDelta } from "../groups";
 
 const DEG = Math.PI / 180;
+// One raycaster for anchor picking; it is only used inside pickAnchor, one
+// pointer position at a time.
+const pickRay = new THREE.Raycaster();
 const MOUSE_TRANSLATION_SNAP_MM = 0.5;
 const GUIDE_SNAP_MM = 2.5;
 const ROD_MOUNT_EXACT_TOLERANCE_MM = 0.25;
@@ -122,12 +128,6 @@ function componentTypeFromAsset(asset: string): string {
   if (name.startsWith("lens")) return "lens";
   if (name.startsWith("slm")) return "slm";
   return name;
-}
-
-function modelNumber(asset: string, type: "holder" | "post"): number {
-  const prefix = type === "holder" ? "PH" : "TR";
-  const match = new RegExp(`(?:^|/)${prefix}(\\d+)`, "i").exec(asset);
-  return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
 }
 
 type RodMountAlignment = {
@@ -1069,9 +1069,38 @@ function removeAxisFreeRotationHandles(control: GizmoControl | null) {
   if (internals.axis === "E" || internals.axis === "XYZE") internals.axis = null;
 }
 
+/** What a figure export asks of the capture beyond "take the picture". */
+export type CaptureOptions = {
+  /** Multiplier on the device pixel ratio — a 4x export for print. */
+  scale?: number;
+  /** `current` keeps the viewport's own colour; the others are for the page. */
+  background?: "current" | "white" | "transparent";
+  /** Discussion pins are editor furniture, not part of a published figure. */
+  hidePins?: boolean;
+};
+
+export type CapturedFrame = {
+  blob: Blob;
+  /** Viewport size in CSS pixels — the coordinate system the callouts use. */
+  cssWidth: number;
+  cssHeight: number;
+  /** Device pixels per CSS pixel in `blob`. */
+  scale: number;
+};
+
 export type ViewportHandle = {
   // Captures the current canvas as a PNG blob (null if the renderer isn't ready).
-  captureSnapshot(): Promise<Blob | null>;
+  captureSnapshot(options?: CaptureOptions): Promise<CapturedFrame | null>;
+  /**
+   * Where on `target` the cursor is, in the part's own frame (mm) — for
+   * dragging a callout's anchor dot onto a particular face of a part.
+   * Null when the part isn't in the scene.
+   */
+  pickAnchor(
+    clientX: number,
+    clientY: number,
+    target: string,
+  ): [number, number, number] | null;
 };
 
 export type TransformMode = "translate" | "rotate";
@@ -1103,7 +1132,6 @@ const Viewport = forwardRef<ViewportHandle, {
   ) => void;
   // Rigid move of the whole selection, saved in a single request.
   onMoveMany: (updates: ComponentUpdate[]) => void;
-  onChangeModel: (asset: string) => void;
   onPlace?: (point: THREE.Vector3) => void;
   /** Beam leg being edited, and the editor anchored beside it in 3D. */
   selectedSegmentKey?: string | null;
@@ -1137,13 +1165,17 @@ const Viewport = forwardRef<ViewportHandle, {
   // Appearance of the pin currently being placed.
   pinPreview?: { authorName: string; color: string };
 
+  /** Figure callouts to project each frame, and where to publish the result. */
+  callouts?: FigureCallout[];
+  anchorStore?: AnchorStore;
+
   // Called once the WebGL renderer has completed its first frame, so
   // callers know captureSnapshot() has something real to capture.
   onReady?: () => void;
 }>(function Viewport({
   components, beam, board, selection, groups, enteredGroupId,
   isPlacing, placingAsset, libraryPreviews, library, transformMode,
-  onSelect, onDrillIn, onMove, onMoveMany, onChangeModel, onPlace,
+  onSelect, onDrillIn, onMove, onMoveMany, onPlace,
   selectedSegmentKey = null, onSelectSegment, beamEditor,
   pins = [],
   pinMode = false,
@@ -1154,6 +1186,8 @@ const Viewport = forwardRef<ViewportHandle, {
   onEditPin,
   onMovePin,
   pinPreview,
+  callouts,
+  anchorStore,
   onReady,
 }, ref) {
   // Frame on the breadboard (Z-up world, units = mm).
@@ -1203,6 +1237,9 @@ const Viewport = forwardRef<ViewportHandle, {
   // GizmoHelper's renderPriority makes it the one driving the render loop, so
   // taking it out mid-capture would leave the frame unpainted.
   const [hideAxisTriad, setHideAxisTriad] = useState(false);
+  // Discussion pins carry an author and a timestamp, which is exactly what a
+  // published figure must not show, so an export can leave them out.
+  const [hidePins, setHidePins] = useState(false);
   const [smartGuideX, setSmartGuideX] = useState<number | null>(null);
   const [smartGuideY, setSmartGuideY] = useState<number | null>(null);
   // Height guide carries the y of the dragged part too, so the line is drawn
@@ -1214,6 +1251,7 @@ const Viewport = forwardRef<ViewportHandle, {
     center: [number, number, number];
   } | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.Camera | null>(null);
   // The move and rotate gizmos are two independent TransformControls, and each
   // raycasts the same pointerdown against its own handles. Where they overlap
@@ -1277,25 +1315,96 @@ const Viewport = forwardRef<ViewportHandle, {
   }, [transformMode, selectedRef, groupProxy]);
 
   useImperativeHandle(ref, () => ({
-    captureSnapshot: () =>
-      new Promise<Blob | null>((resolve) => {
+    captureSnapshot: (options = {}) =>
+      new Promise<CapturedFrame | null>((resolve) => {
+        const renderer = rendererRef.current;
+        const scene = sceneRef.current;
+        if (!renderer || !scene) { resolve(null); return; }
+
+        const scale = Math.max(1, Math.min(4, options.scale ?? 1));
+        const background = options.background ?? "current";
         setHideAxisTriad(true);
+        if (options.hidePins) setHidePins(true);
+
+        // Everything the capture changes is put back in `restore`, including on
+        // the failure paths: leaving the renderer at 4x or the scene without a
+        // background would show up immediately as a blurred, transparent
+        // viewport.
+        const size = renderer.getSize(new THREE.Vector2());
+        const basePixelRatio = renderer.getPixelRatio();
+        const baseBackground = scene.background;
+        const baseAlpha = renderer.getClearAlpha();
+        const restore = () => {
+          renderer.setPixelRatio(basePixelRatio);
+          scene.background = baseBackground;
+          renderer.setClearAlpha(baseAlpha);
+          setHideAxisTriad(false);
+          setHidePins(false);
+        };
+
+        renderer.setPixelRatio(basePixelRatio * scale);
+        if (background === "transparent") {
+          // Needs the alpha context asked for in the Canvas `gl` props: without
+          // it the buffer has no alpha channel to clear.
+          scene.background = null;
+          renderer.setClearAlpha(0);
+        } else if (background === "white") {
+          scene.background = new THREE.Color("#ffffff");
+        }
+
         // Wait two frames so a selection cleared just before this call has
-        // actually unmounted its gizmo/guides and painted before we capture.
+        // actually unmounted its gizmo/guides — and so the resized drawing
+        // buffer has been painted — before we capture.
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
-            // toBlob reads the drawing buffer synchronously, so the triad can
-            // come back as soon as it returns.
-            const done = (blob: Blob | null) => {
-              setHideAxisTriad(false);
-              resolve(blob);
-            };
-            const renderer = rendererRef.current;
-            if (!renderer) { done(null); return; }
-            renderer.domElement.toBlob(done, "image/png");
+            // toBlob reads the drawing buffer synchronously, so the viewport can
+            // be put back as soon as it returns.
+            renderer.domElement.toBlob((blob) => {
+              restore();
+              resolve(blob
+                ? { blob, cssWidth: size.x, cssHeight: size.y,
+                    scale: basePixelRatio * scale }
+                : null);
+            }, "image/png");
           });
         });
       }),
+
+    pickAnchor: (clientX, clientY, target) => {
+      const renderer = rendererRef.current;
+      const camera = cameraRef.current;
+      const object = refs.current[target];
+      if (!renderer || !camera || !object) return null;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      pickRay.setFromCamera(
+        new THREE.Vector2(
+          ((clientX - rect.left) / rect.width) * 2 - 1,
+          -((clientY - rect.top) / rect.height) * 2 + 1,
+        ),
+        camera,
+      );
+
+      // Prefer a real hit on the part: the dot then sits *on* the surface the
+      // user is pointing at — a lens face, the front of a camera — which is
+      // what a figure's leader line is supposed to touch.
+      const hit = pickRay.intersectObject(object, true)[0]?.point;
+      if (hit) {
+        const local = object.worldToLocal(hit.clone());
+        return [local.x, local.y, local.z];
+      }
+
+      // Dragged off the part: slide along the plane through the current anchor
+      // facing the camera, so the dot follows the cursor instead of sticking.
+      // A leader line may legitimately point just beside a part.
+      const anchorWorld = object.localToWorld(new THREE.Vector3());
+      const normal = camera.getWorldDirection(new THREE.Vector3());
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, anchorWorld);
+      const point = pickRay.ray.intersectPlane(plane, new THREE.Vector3());
+      if (!point) return null;
+      const local = object.worldToLocal(point);
+      return [local.x, local.y, local.z];
+    },
   }), []);
 
   useEffect(() => {
@@ -1791,23 +1900,33 @@ const Viewport = forwardRef<ViewportHandle, {
     <Canvas
       shadows={false}
       dpr={[1, 2]}
-      gl={{ antialias: true, preserveDrawingBuffer: true }}
+      // `alpha` is asked for up front because a WebGL context cannot gain an
+      // alpha channel later: a transparent figure export has to be possible
+      // without tearing down and rebuilding the canvas. The scene still paints
+      // its own opaque background, so nothing looks different on screen.
+      gl={{ antialias: true, preserveDrawingBuffer: true, alpha: true }}
       camera={{ fov: 35, near: 1, far: span * 12, position: [cx, cy - span, cz + span * 0.85] }}
-      onCreated={({ camera, gl }) => {
+      onCreated={({ camera, gl, scene }) => {
         camera.up.set(0, 0, 1);            // Z-up to match USD
         camera.lookAt(center);
         cameraRef.current = camera;
         rendererRef.current = gl;
+        sceneRef.current = scene;
         onReady?.();
       }}
 
       // Before:
       // onPointerMissed={() => onSelect(null)}
 
-      // Clear both component selection and pin selection when clicking empty space.
-      onPointerMissed={() => {
+      // Clear component, pin and beam-leg selection when clicking empty space —
+      // the beam editor closes by clicking away from it, like any other card.
+      onPointerMissed={(e) => {
+        // A click on the editor itself arrives here as a miss too (see
+        // `fromOverlay`); that is a click *in* the card, not away from it.
+        if (fromOverlay(e.target)) return;
         onSelect(null);
         onSelectPin?.(null);
+        onSelectSegment?.(null);
       }}
     >
       <color attach="background" args={[bgColor]} />
@@ -1860,7 +1979,10 @@ const Viewport = forwardRef<ViewportHandle, {
               ?? componentTypeFromAsset(placingAsset),
             x: previewPoint.x,
             y: previewPoint.y,
-            z: 0,
+            // Same drop height the server will author, so the ghost stands
+            // where the part lands instead of sunk into the board.
+            z: (board.bbox?.max[2] ?? 0)
+              + (libraryPreviews?.[placingAsset]?.baseOffsetZ ?? 0),
             rotX: 0,
             rotY: 0,
             rotZ: 0,
@@ -2008,17 +2130,6 @@ const Viewport = forwardRef<ViewportHandle, {
           }}
           onDoubleClick={onDrillIn}
           onMove={onMove}
-          modelOptions={library
-            .filter((asset) =>
-              c.type === "holder"
-                ? asset.startsWith("Holder/")
-                : c.type === "post" && asset.startsWith("Post/")
-            )
-            .sort((left, right) =>
-              modelNumber(left, c.type as "holder" | "post")
-              - modelNumber(right, c.type as "holder" | "post")
-            )}
-          onChangeModel={onChangeModel}
         />
       ))}
 
@@ -2115,7 +2226,15 @@ const Viewport = forwardRef<ViewportHandle, {
         </>
       )}
 
-      {pins.map((pin) => (
+      {anchorStore && (
+        <CalloutAnchors
+          store={anchorStore}
+          callouts={callouts ?? []}
+          refs={refs}
+        />
+      )}
+
+      {(hidePins ? [] : pins).map((pin) => (
         <Pin3D
           key={pin.id}
           pin={pin}

@@ -17,6 +17,32 @@ export const VIEWPORT_BG: Record<Exclude<ViewportBg, "auto">, string> = {
   light: "#e7ebf1",
 };
 
+// The background is chosen **per project**: one bench is photographed against
+// black anodized mounts, the next is all silver, and a single global choice
+// meant picking a background for one project changed every other one.
+const bgKey = (project: string | null) =>
+  project ? `ot.viewportBg:${project}` : "ot.viewportBg";
+
+function readBg(project: string | null): ViewportBg {
+  const own = localStorage.getItem(bgKey(project)) as ViewportBg | null;
+  if (own) return own;
+  // A project with no choice of its own starts from the legacy global value
+  // (nothing writes it any more), so an existing user's setting still applies.
+  return (localStorage.getItem("ot.viewportBg") as ViewportBg) || "auto";
+}
+
+// The choice is keyed by project name, so rename/duplicate/delete have to
+// carry it across (or drop it) — otherwise a renamed bench silently reverts.
+export function moveViewportBg(
+  from: string,
+  to: string | null,
+  keepSource = false
+) {
+  const chosen = localStorage.getItem(bgKey(from));
+  if (chosen && to) localStorage.setItem(bgKey(to), chosen);
+  if (!keepSource) localStorage.removeItem(bgKey(from));
+}
+
 interface Settings {
   theme: Theme;
   lang: Lang;
@@ -24,6 +50,7 @@ interface Settings {
   resolvedBg: Exclude<ViewportBg, "auto">;    // what the canvas actually shows
   bgColor: string;                            // …as a hex colour
   setViewportBg: (bg: ViewportBg) => void;
+  setBgProject: (project: string | null) => void;  // which project's choice is live
   t: (key: string, vars?: Record<string, string | number>) => string;
   toggleTheme: () => void;
   toggleLang: () => void;
@@ -38,18 +65,24 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Lang>(
     () => (localStorage.getItem("ot.lang") as Lang) || "en"
   );
-  const [viewportBg, setViewportBg] = useState<ViewportBg>(
-    () => (localStorage.getItem("ot.viewportBg") as ViewportBg) || "auto"
-  );
+  const [bgProject, setBgProject] = useState<string | null>(null);
+  const [viewportBg, setViewportBgState] = useState<ViewportBg>(() => readBg(null));
 
-  useEffect(() => {
-    localStorage.setItem("ot.viewportBg", viewportBg);
-  }, [viewportBg]);
+  // Swap in the open project's own background when it changes.
+  useEffect(() => setViewportBgState(readBg(bgProject)), [bgProject]);
+
+  const setViewportBg = (bg: ViewportBg) => {
+    setViewportBgState(bg);
+    localStorage.setItem(bgKey(bgProject), bg);
+  };
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("ot.theme", theme);
   }, [theme]);
   useEffect(() => {
+    // Not just for screen readers: the browser picks its font and its
+    // line-breaking rules from this, and `:lang()` in theme.css keys off it.
+    document.documentElement.lang = lang;
     localStorage.setItem("ot.lang", lang);
   }, [lang]);
 
@@ -62,6 +95,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     resolvedBg,
     bgColor: VIEWPORT_BG[resolvedBg],
     setViewportBg,
+    setBgProject,
     t: (key, vars) => translate(lang, key, vars),
     toggleTheme: () => setTheme((t) => (t === "dark" ? "light" : "dark")),
     toggleLang: () => setLang((l) => (l === "en" ? "ja" : "en")),

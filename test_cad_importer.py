@@ -21,8 +21,13 @@ if HAS_OCP:
         MeshPart,
         analyze_cylindrical_laser_emission,
         analyze_lens_profile,
+        match_mesh_rule,
+        match_part_color,
+        parse_mesh_opacities,
+        parse_part_colors,
         split_rod_hi_parts,
         write_lo_primitives,
+        write_usda_mesh,
     )
 
 
@@ -264,6 +269,118 @@ class LaserEmissionTests(unittest.TestCase):
         self.assertEqual(profile.center_y, -2)
         self.assertEqual(profile.center_z, 4)
         self.assertEqual(profile.diameter, 10)
+
+
+@requires_ocp
+class PartColorTests(unittest.TestCase):
+    """--part-color paints named STEP leaves, for assemblies with no colors."""
+
+    def test_matches_a_leaf_by_substring_and_ignores_case(self):
+        rules = parse_part_colors(["EEC4011_housing=0.62,0.09,0.10"])
+        # Vendor leaves carry suffixes (`_STEP`, and `_002` on repeats), so a
+        # rule pinned to the whole name would match none of them.
+        self.assertEqual(
+            match_part_color("EEC4011_HOUSING_STEP", rules),
+            (0.62, 0.09, 0.10),
+        )
+        self.assertIsNone(match_part_color("M3x8_torx_CTS_screw_STEP", rules))
+
+    def test_first_matching_rule_wins(self):
+        rules = parse_part_colors(["cover_left=1,0,0", "cover=0,1,0"])
+        self.assertEqual(match_part_color("Cover_left_1_STEP", rules), (1.0, 0.0, 0.0))
+        self.assertEqual(match_part_color("Cover_right_STEP", rules), (0.0, 1.0, 0.0))
+
+    def test_rejects_malformed_rules(self):
+        for bad in ("nocolor", "x=1,2", "x=1,2,3,4", "x=a,b,c", "=1,0,0", "x=2,0,0"):
+            with self.subTest(rule=bad):
+                with self.assertRaises(ValueError):
+                    parse_part_colors([bad])
+
+    def test_whitespace_around_the_channels_is_allowed(self):
+        self.assertEqual(
+            parse_part_colors(["mod = 0.3, 0.34, 0.37"]),
+            [("mod", (0.3, 0.34, 0.37))],
+        )
+
+
+@requires_ocp
+class MeshOverrideTests(unittest.TestCase):
+    """--mesh-color / --mesh-opacity paint the meshes the writer itself names.
+
+    The counterpart to --part-color, for a model whose pieces come from STEP
+    face colors instead of an assembly tree: the ID25 iris is one leaf, so its
+    aperture disc has no leaf name to aim a --part-color rule at.
+    """
+
+    def parts(self):
+        return [
+            MeshPart(ring(0.0), [0, 1, 2], (1.0, 1.0, 1.0)),
+            MeshPart(ring(1.0), [0, 1, 2], (1.0, 0.0, 0.0)),
+        ]
+
+    def write(self, **kwargs):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        output = Path(directory.name) / "hi.usda"
+        write_usda_mesh(
+            ring(0.0),
+            [0, 1, 2],
+            output,
+            component_type="iris",
+            root_prim_name="Iris",
+            mesh_parts=self.parts(),
+            **kwargs,
+        )
+        stage = Usd.Stage.Open(str(output))
+        return {
+            prim.GetName(): (
+                UsdGeom.Mesh(prim).GetDisplayColorAttr().Get()[0],
+                UsdGeom.Mesh(prim).GetDisplayOpacityAttr().Get()[0],
+            )
+            for prim in stage.Traverse()
+            if prim.IsA(UsdGeom.Mesh)
+        }
+
+    def test_a_broad_rule_repaints_every_mesh(self):
+        meshes = self.write(
+            mesh_color_rules=parse_part_colors(["CADMesh=0,0,0"]),
+        )
+        for name, (color, _) in meshes.items():
+            with self.subTest(mesh=name):
+                self.assertEqual(tuple(color), (0.0, 0.0, 0.0))
+
+    def test_a_narrow_rule_listed_first_survives_the_broad_one(self):
+        meshes = self.write(
+            mesh_color_rules=parse_part_colors([
+                "CADMesh_002=0.35,0.36,0.38",
+                "CADMesh=0,0,0",
+            ]),
+            mesh_opacity_rules=parse_mesh_opacities(["CADMesh_002=0.2"]),
+        )
+        self.assertEqual(tuple(meshes["CADMesh_001"][0]), (0.0, 0.0, 0.0))
+        self.assertEqual(meshes["CADMesh_001"][1], 1.0)
+        # color3f is float32, so compare per channel rather than as a tuple.
+        for channel, expected in zip(meshes["CADMesh_002"][0], (0.35, 0.36, 0.38)):
+            self.assertAlmostEqual(channel, expected, places=6)
+        self.assertAlmostEqual(meshes["CADMesh_002"][1], 0.2, places=6)
+
+    def test_unmatched_meshes_keep_their_step_colors(self):
+        meshes = self.write(
+            mesh_color_rules=parse_part_colors(["CADMesh_002=0,0,1"]),
+        )
+        self.assertEqual(tuple(meshes["CADMesh_001"][0]), (1.0, 1.0, 1.0))
+
+    def test_rejects_malformed_opacity_rules(self):
+        for bad in ("noopacity", "x=", "x=abc", "=0.5", "x=1.5", "x=-0.1"):
+            with self.subTest(rule=bad):
+                with self.assertRaises(ValueError):
+                    parse_mesh_opacities([bad])
+
+    def test_opacity_rules_match_by_substring_first_wins(self):
+        rules = parse_mesh_opacities(["CADMesh_004=0.2", "CADMesh=1"])
+        self.assertEqual(match_mesh_rule("CADMesh_004", rules), 0.2)
+        self.assertEqual(match_mesh_rule("CADMesh_001", rules), 1.0)
+        self.assertIsNone(match_mesh_rule("Housing", rules))
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import type { Page } from "@playwright/test";
 // breadboard hole away, repeated pastes fan out, and a whole project can be
 // duplicated from its gallery card.
 
-import { expandAllOutlinerTypes, loginIfNeeded, openProject } from "./helpers";
+import { cardAction, expandAllOutlinerTypes, loginIfNeeded, openProject } from "./helpers";
 
 type Comp = { name: string; x: number; y: number; z: number; rotZ: number };
 
@@ -152,7 +152,7 @@ test("the gallery card duplicates a whole project", async ({ page, baseURL }) =>
 
     const card = page.locator(".card", { hasText: project }).first();
     await expect(card).toBeVisible();
-    await card.locator(".card-dup").click();
+    await cardAction(page, project, "Duplicate");
 
     await expect(page.locator(".card", { hasText: copy })).toBeVisible();
 

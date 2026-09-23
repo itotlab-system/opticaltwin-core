@@ -115,6 +115,22 @@ button.ghost { background: transparent; }
   opacity: .45;
 }
 
+/* 図注: the mode and the layer's visibility as one segmented control, so the
+   toolbar carries one 図注 item instead of two competing buttons. */
+.callout-toggle { display: inline-flex; flex: 0 0 auto; }
+.callout-toggle button { border-radius: 0; padding: 6px 10px; font-size: 12px; }
+.callout-toggle button:first-child { border-radius: 7px 0 0 7px; }
+.callout-toggle button:last-child { border-radius: 0 7px 7px 0; }
+/* The eye segment is icon-only; it collapses onto the label's border. */
+.callout-toggle button + button {
+  margin-left: -1px; padding: 6px 8px;
+  display: inline-flex; align-items: center;
+}
+.callout-toggle button.active {
+  position: relative;
+  color: var(--text); background: var(--accent-dim); border-color: var(--accent);
+}
+
 .history-controls { display: inline-flex; gap: 4px; flex: 0 0 auto; }
 .history-controls .iconbtn { width: 28px; height: 28px; font-size: 15px; }
 
@@ -219,8 +235,38 @@ button.ghost { background: transparent; }
 .type-head .swatch { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
 .type-head .nm { flex: 1; letter-spacing: .2px; }
 .type-members { border-left: 2px solid var(--line); }
-.node.node-member { padding-left: 30px; font-size: 12px; }
+.node.node-member { padding-left: 16px; font-size: 12px; }
+.node.node-member.node-nested { padding-left: 30px; }
 .node.node-member.entered { background: var(--row); }
+/* Rows are the tree's focusable items now, so they need a focus state of their
+   own — before, a keyboard user could not reach them at all. */
+.node:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.node .tree-arrow {
+  width: 10px; color: var(--muted); flex: 0 0 auto; font-size: 11px;
+}
+
+/* ---- outliner: beam order ---- */
+.outliner-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; padding-right: 10px;
+}
+.view-toggle { display: inline-flex; flex: 0 0 auto; }
+.view-toggle button {
+  border-radius: 0; padding: 3px 9px; font-size: 11px;
+  background: transparent; color: var(--muted);
+}
+.view-toggle button:first-child { border-radius: 6px 0 0 6px; }
+.view-toggle button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.view-toggle button.active {
+  background: var(--accent-dim); border-color: var(--accent); color: var(--text);
+}
+.beam-node + .beam-node { margin-top: 1px; }
+/* What is folded away under an optic, said in words rather than left to a
+   disclosure arrow: the hardware is most of the bench, and a collapsed branch
+   that does not say what it holds reads as an empty one. */
+.mount-hint {
+  padding: 0 16px 7px 42px; font-size: 11px; color: var(--muted);
+}
 
 /* ---- group inspector ---- */
 .group-name-input {
@@ -267,8 +313,8 @@ button.ghost { background: transparent; }
 .field label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 4px; }
 .field input { width: 100%; font-variant-numeric: tabular-nums; }
 .field input:focus { outline: none; border-color: var(--accent); }
-.board-model-field { grid-column: 1 / -1; }
-.board-model-field select { width: 100%; }
+.board-model-field, .model-field { grid-column: 1 / -1; }
+.board-model-field select, .model-field select { width: 100%; }
 .props { padding: 8px 16px 16px; }
 .prop { display: flex; justify-content: space-between; font-size: 12px;
   padding: 5px 0; border-bottom: 1px solid var(--line); }
@@ -288,23 +334,127 @@ button.big { padding: 10px 16px; font-size: 14px; }
   border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 24px; }
 .newform input { flex: 1; }
 .newform .err { color: var(--danger); font-size: 12px; }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
 .card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px;
-  padding: 16px; cursor: pointer; transition: border-color .15s, transform .1s; min-height: 130px;
+  padding: 14px; cursor: pointer; transition: border-color .15s, transform .1s;
   display: flex; flex-direction: column; }
 .card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .card-top { display: flex; justify-content: space-between; align-items: center; }
 .card-name { font-weight: 600; font-size: 15px; flex: 1; }
-.card-dup,
-.card-del { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; }
-.card-dup { font-size: 15px; }
-.card-dup:hover { color: var(--accent); }
-.card-del:hover { color: var(--danger); }
-.card-dup:disabled, .card-del:disabled { opacity: .4; cursor: default; }
-.swatches { flex: 1; display: flex; flex-wrap: wrap; gap: 5px; align-content: flex-start; margin: 14px 0; }
-.chip { width: 14px; height: 14px; border-radius: 4px; }
-.card-foot { font-size: 12px; color: var(--muted); }
+.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Card actions live behind one "⋯", quiet until the card is pointed at. */
+.card-menu { position: relative; flex: 0 0 auto; }
+.card-menu-btn {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 17px; line-height: 1; padding: 2px 6px; border-radius: 6px;
+  opacity: 0; transition: opacity .12s, color .12s, background .12s;
+}
+.card:hover .card-menu-btn,
+.card:focus-within .card-menu-btn,
+.card-menu-btn[aria-expanded="true"] { opacity: 1; }
+.card-menu-btn:hover { color: var(--fg); background: var(--panel); }
+.card-menu-btn:disabled { opacity: .4; cursor: default; }
+/* Touch has no hover, so a hover-revealed control would be unreachable. */
+@media (hover: none) {
+  .card-menu-btn { opacity: 1; }
+}
+.card-menu-pop {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 20;
+  min-width: 148px; padding: 4px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  display: flex; flex-direction: column;
+}
+.card-menu-item {
+  background: none; border: none; color: var(--fg); cursor: pointer;
+  font: inherit; font-size: 13px; text-align: left;
+  padding: 7px 10px; border-radius: 6px; white-space: nowrap;
+}
+.card-menu-item:hover, .card-menu-item:focus-visible { background: var(--panel-2); }
+/* Set apart, and coloured: deleting a project removes somebody's setup. */
+.card-menu-item.danger { color: var(--danger); margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; }
+.card-menu-item.danger:hover { background: var(--danger); color: #fff; }
+/* Sits where .card-name was, so the card doesn't reflow when editing starts. */
+.card-rename {
+  flex: 1; min-width: 0; font-weight: 600; font-size: 15px;
+  font-family: inherit; color: var(--fg); background: var(--panel);
+  border: 1px solid var(--accent); border-radius: 4px; padding: 1px 5px;
+}
+/* The bench itself, drawn by benchThumbs.tsx. A fixed 16:10 box so the grid
+   stays on a rhythm whether or not a picture has been drawn yet. */
+.card-thumb {
+  aspect-ratio: 16 / 10; margin-bottom: 12px; border-radius: 8px;
+  overflow: hidden; background: var(--panel);
+  border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+}
+.card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card-thumb-wait { font-size: 12px; }
+/* One row of type colours, clipped: a signal of what is on the bench, not the
+   card's main content any more — the picture is. */
+.swatches { display: flex; gap: 4px; overflow: hidden; height: 8px; margin: 10px 0 8px; }
+.chip { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+.card-foot {
+  font-size: 12px; color: var(--muted);
+  display: flex; justify-content: space-between; gap: 10px;
+}
+/* The board footprint is the steadier of the two facts, so it sits right and
+   lets the "last edited" line change length without moving it. */
+.card-board { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); font-size: 13px; }
+
+/* ---- gallery filing: folder tabs, sections, archive drawer ---- */
+/* A folder is a label a project carries, not a directory (PROJECT_META_FILE in
+   server.py). None of this appears until some project is actually filed. */
+.folder-tabs {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  border-bottom: 1px solid var(--line); margin-bottom: 20px;
+}
+.folder-tab {
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  border-radius: 0; color: var(--muted); padding: 8px 12px; font-size: 13px;
+  margin-bottom: -1px; cursor: pointer; max-width: 240px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.folder-tab:hover { color: var(--text); }
+.folder-tab.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.folder-section + .folder-section { margin-top: 28px; }
+.folder-head {
+  margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--muted);
+  letter-spacing: .02em;
+}
+/* An archived card still shows its bench — it is put away, not hidden — but
+   sits back so it never competes with the live ones when the drawer is open. */
+.card.archived { opacity: .62; }
+.card.archived:hover { opacity: 1; }
+.archive-drawer { margin-top: 32px; border-top: 1px solid var(--line); padding-top: 14px; }
+.archive-toggle {
+  background: transparent; border: none; color: var(--muted);
+  font-size: 13px; padding: 4px 0; margin-bottom: 12px; cursor: pointer;
+}
+.archive-toggle:hover { color: var(--text); }
+
+/* ---- "move to folder" dialog ---- */
+.modal-back {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(0, 0, 0, .5);
+  display: flex; align-items: center; justify-content: center;
+}
+.folder-pick {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 18px; width: min(420px, calc(100vw - 32px));
+  max-height: min(70vh, 560px); display: flex; flex-direction: column;
+}
+.folder-pick h2 { margin: 0 0 14px; font-size: 15px; font-weight: 600; }
+.folder-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.folder-opt {
+  background: transparent; border: 1px solid transparent; text-align: left;
+  color: var(--text); padding: 8px 10px; font-size: 13px; cursor: pointer;
+}
+.folder-opt:hover { background: var(--panel-2); }
+.folder-opt.on { border-color: var(--accent); color: var(--accent); }
+.folder-new { display: flex; gap: 8px; margin-top: 14px; }
+.folder-new input { flex: 1; }
 
 .backbtn { background: transparent; border: 1px solid var(--line); }
 .backbtn:hover { border-color: var(--accent); }
@@ -328,6 +478,138 @@ button.big { padding: 10px 16px; font-size: 14px; }
   grid-column: 1 / 3;
 }
 .icon-btn { padding: 7px 13px; font-size: 16px; line-height: 1; }
+.outliner-add .browse-parts-btn {
+  grid-column: 1 / -1;
+  padding: 8px 10px; font-size: 13px; font-weight: 600;
+  border: 1px solid var(--accent-dim); border-radius: 6px;
+  background: var(--accent); color: #fff; cursor: pointer;
+}
+.outliner-add .browse-parts-btn:hover { filter: brightness(1.08); }
+
+/* ---- part browser: the visual catalogue ---- */
+.part-browser-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 4vh 4vw;
+}
+.part-browser {
+  display: flex; flex-direction: column;
+  /* The default is a share of the screen rather than a fixed box: the
+     catalogue is a grid, so a wider window is more parts visible at once, and
+     a 1100px dialog left two thirds of a lab monitor as backdrop. `resize`
+     lets it be dragged from there; the size is remembered (PartBrowser.tsx). */
+  width: min(1600px, 100%); height: min(1000px, 100%);
+  min-width: 520px; min-height: 360px;
+  max-width: 100%; max-height: 100%;
+  resize: both;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.part-browser-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-bottom: 1px solid var(--line);
+}
+.part-browser-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.part-search {
+  flex: 1; min-width: 0;
+  padding: 7px 10px; font-size: 13px;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px;
+}
+.part-browser-close { background: none; border: none; color: var(--muted); }
+
+.part-browser-body { flex: 1; display: flex; min-height: 0; }
+.part-categories {
+  width: 168px; flex: none; overflow-y: auto;
+  padding: 8px; border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.part-category {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 9px; font-size: 12.5px; text-align: left;
+  background: none; border: none; border-radius: 5px;
+  color: var(--text); cursor: pointer;
+}
+.part-category:hover { background: var(--row); }
+.part-category.sel { background: var(--accent-dim); }
+.part-category .nm { flex: 1; }
+.part-category .x-hint { color: var(--muted); font-size: 11px; }
+
+.part-grid {
+  flex: 1; overflow-y: auto; padding: 14px;
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  align-content: start;
+}
+.part-grid .empty { grid-column: 1 / -1; }
+.part-tile {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 9px; text-align: left;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px;
+  cursor: pointer;
+}
+.part-tile:hover { border-color: var(--accent); }
+.part-tile.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.part-thumb {
+  display: block; width: 100%; aspect-ratio: 1 / 1;
+  margin-bottom: 4px; border-radius: 6px; overflow: hidden;
+  /* A neutral mid tone: black anodized mounts vanish on a dark tile and
+     silver optics wash out on a light one — the same reason the viewport
+     offers a gray background. */
+  background: #6a707a;
+}
+.part-thumb img { width: 100%; height: 100%; object-fit: contain; }
+/* A tile whose picture is still being drawn. The flat block it replaces was
+   indistinguishable from a part that genuinely is a gray box, so a grid of them
+   read as the catalogue rather than as a queue. The sweep is the only thing on
+   screen that says "still coming". */
+.part-thumb-wait {
+  display: block; width: 100%; height: 100%;
+  position: relative; overflow: hidden;
+  background: var(--tint, var(--row));
+  opacity: 0.45;
+}
+/* The sweep travels on a transform rather than on background-position: with up
+   to 86 tiles waiting at once, a background repaint per tile per frame is paid
+   during exactly the load this is meant to make bearable. */
+.part-thumb-wait::after {
+  content: ""; position: absolute; inset: 0 -60%;
+  background: linear-gradient(100deg,
+    transparent 20%, rgb(255 255 255 / 0.13) 50%, transparent 80%);
+  animation: part-thumb-sweep 1.5s cubic-bezier(.4, 0, .2, 1) infinite;
+  will-change: transform;
+}
+@keyframes part-thumb-sweep {
+  from { transform: translateX(-60%); }
+  to   { transform: translateX(60%); }
+}
+/* The sweep is reassurance, not information — the footer count carries the
+   real progress, so nothing is lost by holding it still. */
+@media (prefers-reduced-motion: reduce) {
+  .part-thumb-wait::after { animation: none; }
+}
+.part-model { font-size: 12.5px; font-weight: 600; word-break: break-word; }
+.part-type { font-size: 11px; color: var(--muted); }
+.part-specs { font-size: 11px; color: var(--muted); }
+
+.part-browser-foot {
+  /* Extra room on the right: the browser's own resize grip is drawn in that
+     corner, and the status line would otherwise run underneath it. */
+  padding: 9px 26px 9px 14px; border-top: 1px solid var(--line);
+}
+
+/* Rendered, never seen: the thumbnail forge needs a live WebGL canvas, and a
+   display:none canvas stops producing frames. */
+/* Offscreen host for the one-at-a-time thumbnail canvases (parts and benches).
+   Sized by whatever canvas is inside it, so the two forges can differ. */
+.thumb-forge {
+  position: fixed; left: -10000px; top: 0;
+  width: max-content; height: max-content; pointer-events: none;
+}
 
 /* ---- row-actions keyboard hint ---- */
 .row-actions { display: flex; align-items: center; gap: 10px; padding: 10px 16px; }
@@ -338,36 +620,6 @@ button.big { padding: 10px 16px; font-size: 14px; }
   font-family: monospace;
 }
 
-.model-picker-popover {
-  transform: translateX(74px);
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
-  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.28);
-  white-space: nowrap;
-  pointer-events: auto;
-}
-.model-picker-popover::before {
-  content: "";
-  position: absolute;
-  right: 100%;
-  border: 6px solid transparent;
-  border-right-color: var(--line);
-}
-.model-picker-popover label {
-  color: var(--muted);
-  font-size: 10px;
-  user-select: none;
-}
-.model-picker-popover select {
-  min-width: 132px;
-  padding: 5px 8px;
-  font-size: 12px;
-}
 /* ---- physics panel (paraxial simulation results) ---- */
 .physics-panel {
   border-top: 1px solid var(--line);
@@ -643,135 +895,161 @@ button.big { padding: 10px 16px; font-size: 14px; }
   border-color: rgba(0, 0, 0, 0.25);
 }
 
-/* ---- login ---- */
+/* ---- login ----
+   Built from the same tokens as the editor it opens into, and theme-aware:
+   the page used to be a fixed light mint/glass design, so a dark-theme member
+   got a white flash and a second accent colour before landing in a dark blue
+   tool. Mint stays where it belongs — inside the logo image. */
 
 .login-page {
   position: relative;
-  box-sizing: border-box;
   min-height: 100vh;
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: 36px;
+  gap: 32px;
   width: 100%;
-  padding: 54px 44px;
+  padding: 48px 24px;
   overflow: hidden;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  background:
-    radial-gradient(circle at 50% 10%, rgba(35, 221, 163, 0.22), transparent 30%),
-    radial-gradient(circle at 50% 78%, rgba(47, 95, 150, 0.12), transparent 38%),
-    linear-gradient(180deg, #f9fbfd 0%, #edf3f8 48%, #e5ebf2 100%);
-  color: #17212f;
+  background: var(--bg);
+  color: var(--text);
 }
 
-.login-logo {
-  width: 100%;
+/* A single wash of the UI accent, so the page has depth without inventing a
+   palette. color-mix keeps it correct in both themes from one declaration. */
+.login-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 70% 55% at 50% 0%,
+    color-mix(in srgb, var(--accent) 16%, transparent),
+    transparent 70%);
+}
+
+.login-hero,
+.login-form,
+.login-status {
+  position: relative;
+  z-index: 1;
+}
+
+.login-hero {
   display: grid;
-  place-items: center;
-  padding: 0 18px;
+  justify-items: center;
+  gap: 16px;
+  text-align: center;
+  padding: 0 16px;
 }
 
-.login-logo img {
+/* The wordmark ships as a light/dark pair; the tagline is live text instead of
+   part of the image, so it translates and stays sharp at any zoom. */
+.login-hero img {
   display: block;
-  width: min(860px, 100%);
+  width: min(360px, 76vw);
   height: auto;
-  object-fit: contain;
-  filter: drop-shadow(0 22px 36px rgba(20, 184, 138, 0.2));
+}
+/* Qualified with the img type so these outrank `.login-hero img` above —
+   as bare class rules they lost the cascade and both marks stacked up. */
+.login-hero img.login-logo-light { display: none; }
+:root[data-theme="light"] .login-hero img.login-logo-light { display: block; }
+:root[data-theme="light"] .login-hero img.login-logo-dark { display: none; }
+
+/* The tagline sets in both languages, so it is measured in `em` rather than
+   `ch` — `ch` is the width of "0", about half a Japanese character, so a
+   `ch` limit made the Japanese line roughly twice as long as intended. */
+.login-tagline {
+  margin: 0;
+  max-width: 30em;
+  color: var(--muted);
+  font-size: 14px;
+  /* Japanese needs more air between lines than Latin text at the same size. */
+  line-height: 1.9;
+  letter-spacing: .01em;
+  /* Even out the line lengths instead of leaving a short widow on the last
+     line, and keep 、。 off the head of a line if a break lands near one. */
+  text-wrap: balance;
+  line-break: strict;
+}
+
+/* One box per 文節: a browser breaks CJK at almost any character because there
+   are no spaces to guide it, so the phrase boundaries are marked in the string
+   and each phrase becomes a box the line breaker will not enter. */
+.login-tagline span {
+  display: inline-block;
+}
+/* Latin phrases still need the space between them; CJK phrases must not gain
+   one, and the marked breaks already sit after 、or 。 */
+:root:lang(en) .login-tagline span + span::before {
+  content: " ";
+  white-space: pre;
 }
 
 .login-form {
-  box-sizing: border-box;
-  width: min(430px, 100%);
-  padding: 28px;
-  border: 1px solid rgba(132, 151, 176, 0.34);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow:
-    0 18px 44px rgba(23, 33, 47, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(18px) saturate(1.25);
+  width: min(380px, 100%);
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+}
+:root[data-theme="light"] .login-form {
+  box-shadow: 0 14px 36px rgba(27, 31, 38, 0.10);
 }
 
 .login-form label {
   display: block;
-  margin-bottom: 10px;
-  color: #445469;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .8px;
   text-transform: uppercase;
 }
 
+/* Height and font size are the only departures from the shared input rule —
+   a password field is the one control on the page and should feel like it. */
 .login-form input {
-  box-sizing: border-box;
   width: 100%;
-  height: 48px;
-  padding: 0 14px;
-  border: 1px solid #adbbcc;
-  border-radius: 6px;
-  background: rgba(251, 253, 255, 0.95);
-  color: #17212f;
-  font-size: 17px;
-  outline: none;
-  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+  height: 44px;
+  font-size: 15px;
+  transition: border-color .14s ease, box-shadow .14s ease;
 }
-
 .login-form input:focus {
-  border-color: #1ed49b;
-  background: #fff;
-  box-shadow:
-    0 0 0 4px rgba(34, 220, 162, 0.18),
-    0 10px 24px rgba(25, 120, 94, 0.12);
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
 .login-form button {
   width: 100%;
-  height: 48px;
-  margin-top: 18px;
-  border: 0;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #23dda3, #2ff0b8);
-  color: #06140f;
+  height: 44px;
+  margin-top: 16px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
   font-size: 14px;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  cursor: pointer;
-  box-shadow:
-    0 14px 28px rgba(35, 221, 163, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.36);
-  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+  font-weight: 600;
 }
-
-.login-form button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  filter: brightness(1.03);
-  box-shadow:
-    0 18px 34px rgba(35, 221, 163, 0.34),
-    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+.login-form button:hover:not(:disabled) { filter: brightness(1.08); }
+.login-form button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
+.login-form button:disabled { cursor: wait; opacity: .6; }
 
-.login-form button:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow:
-    0 10px 22px rgba(35, 221, 163, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.34);
-}
-
-.login-form button:disabled {
-  cursor: wait;
-  opacity: 0.7;
-}
-
-.login-form p,
-.login-status {
+.login-error {
   margin: 14px 0 0;
-  color: #b42318;
-  font-size: 14px;
+  color: var(--danger);
+  font-size: 13px;
 }
 
 .login-status {
-  color: #445469;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* Added:
@@ -874,3 +1152,97 @@ button.big { padding: 10px 16px; font-size: 14px; }
 }
 .sweep-range:focus::-moz-range-thumb,
 .sweep-range:hover::-moz-range-thumb { box-shadow: 0 0 0 4px var(--accent-dim); }
+
+/* ---- figure callouts (paper-figure labels over the viewport) ---- */
+
+/* Covers the canvas without taking its pointer events: only the label boxes
+   themselves are interactive, so orbiting still works through the layer. */
+.callout-layer { position: absolute; inset: 0; pointer-events: none; }
+.callout-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.callout-editor-host { position: absolute; inset: 0; pointer-events: none; }
+
+.callout-hit { pointer-events: auto; cursor: move; }
+.callout-item text { user-select: none; }
+
+.callout-tools { pointer-events: auto; cursor: pointer; }
+.callout-tools rect { fill: var(--panel); stroke: var(--border); }
+.callout-tools text { fill: var(--text); }
+.callout-tools g:hover rect,
+.callout-tools g.active rect { fill: var(--accent); }
+.callout-tools g:hover text,
+.callout-tools g.active text { fill: #fff; }
+
+/* A label hidden from the figure, shown faint while 図注 mode is on so it can
+   be brought back — it is out of the picture, not out of the project. */
+.callout-item.hidden { opacity: .35; }
+
+/* Colour swatches for the selected label. HTML, not SVG: editing furniture,
+   never part of the exported picture. */
+.callout-palette {
+  position: absolute; pointer-events: auto;
+  padding: 8px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  display: grid; gap: 6px;
+}
+.callout-swatches { display: flex; align-items: center; gap: 5px; }
+.callout-swatch-title {
+  width: 4.5em; font-size: 11px; color: var(--muted);
+}
+.callout-swatch {
+  width: 18px; height: 18px; padding: 0; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 4px;
+}
+/* The "no fill" swatch: a diagonal slash, the usual sign for transparent. */
+.callout-swatch.none {
+  background:
+    linear-gradient(to top right,
+      transparent calc(50% - 1px), #d92b2b calc(50% - 1px),
+      #d92b2b calc(50% + 1px), transparent calc(50% + 1px)),
+    var(--panel);
+}
+.callout-swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Sits exactly over the label box while its text is being retyped. */
+.callout-editor {
+  position: absolute; pointer-events: auto;
+  padding: 4px 7px; margin: 0;
+  border: 1.6px solid var(--accent); border-radius: 3px;
+  background: #fff; color: #111;
+  font-family: 'Helvetica Neue', Helvetica, Arial, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  line-height: 1.32; resize: none; overflow: hidden;
+}
+
+.figure-export-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  display: grid; place-items: center;
+  background: rgba(0, 0, 0, .5);
+}
+.figure-export-dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 18px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel); box-shadow: 0 18px 48px rgba(0, 0, 0, .4);
+}
+.figure-export-title { margin-bottom: 12px; font-weight: 700; }
+.figure-export-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 10px; font-size: 12px;
+}
+.figure-export-row select { flex: 1; max-width: 240px; }
+.figure-export-check {
+  display: flex; align-items: center; gap: 8px;
+  margin: 12px 0; font-size: 12px;
+}
+.figure-export-hint {
+  margin: 12px 0; font-size: 11px; line-height: 1.6; color: var(--muted);
+}
+.figure-export-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+}
+
+/* Grab area for the anchor dot — invisible, but a big enough target to hit. */
+.callout-grip {
+  pointer-events: auto; cursor: crosshair;
+  fill: transparent; stroke: var(--accent); stroke-width: 1.4;
+  stroke-dasharray: 3 3; opacity: .8;
+}

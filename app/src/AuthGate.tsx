@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import App from "./App";
+import { useSettings } from "./settings";
+import { phrases } from "./i18n";
 
 type AuthStatus = {
   required: boolean;
@@ -8,7 +10,15 @@ type AuthStatus = {
 
 const TAB_AUTH_KEY = "ot.authenticatedInTab";
 
+// The server answers with a machine-readable `code` so the message can be
+// shown in the member's own language; the raw `error` string is the fallback
+// for a backend older than that change.
+const ERROR_KEYS: Record<string, string> = {
+  invalid_password: "login_invalid_password",
+};
+
 export default function AuthGate() {
+  const { t } = useSettings();
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -31,7 +41,9 @@ export default function AuthGate() {
       });
     }
 
-    loadStatus().catch(() => setError("サーバーに接続できません。"));
+    // `t` is rebuilt on every provider render, so it must stay out of the deps
+    // — hence `error` holds a *key*, translated at render time instead.
+    loadStatus().catch(() => setError("login_unreachable"));
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -47,13 +59,13 @@ export default function AuthGate() {
       });
       const result = await response.json();
       if (!response.ok) {
-        setError(result.error ?? "ログインできませんでした。");
+        setError(ERROR_KEYS[result.code] ?? result.error ?? "login_failed");
         return;
       }
       sessionStorage.setItem(TAB_AUTH_KEY, "true");
       setStatus({ required: true, authenticated: true });
     } catch {
-      setError("サーバーに接続できません。");
+      setError("login_unreachable");
     } finally {
       setSubmitting(false);
     }
@@ -63,12 +75,20 @@ export default function AuthGate() {
 
   return (
     <main className="login-page">
-      <div className="login-logo">
-        <img src="/login.png" alt="OpticalTwin" />
+      <div className="login-hero">
+        {/* Two wordmarks, one shown per theme — the light one is black text
+            that would vanish on the dark background, and vice versa. */}
+        <img className="login-logo-light" src="/logo.png" alt="OpticalTwin" />
+        <img className="login-logo-dark" src="/logo-dark.png" alt="OpticalTwin" />
+        <p className="login-tagline">
+          {phrases(t("login_tagline")).map((phrase, i) => (
+            <span key={i}>{phrase}</span>
+          ))}
+        </p>
       </div>
       {status ? (
         <form className="login-form" onSubmit={submit}>
-          <label htmlFor="login-password">Password</label>
+          <label htmlFor="login-password">{t("login_password")}</label>
           <input
             id="login-password"
             type="password"
@@ -79,12 +99,12 @@ export default function AuthGate() {
             onChange={(event) => setPassword(event.target.value)}
           />
           <button type="submit" disabled={submitting}>
-            {submitting ? "Logging in..." : "Login"}
+            {submitting ? t("login_submitting") : t("login_submit")}
           </button>
-          {error && <p role="alert">{error}</p>}
+          {error && <p className="login-error" role="alert">{t(error)}</p>}
         </form>
       ) : (
-        <p className="login-status">{error || "Loading..."}</p>
+        <p className="login-status">{error ? t(error) : t("login_loading")}</p>
       )}
     </main>
   );

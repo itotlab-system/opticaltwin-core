@@ -1,12 +1,14 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { useGLTF, Html } from "@react-three/drei";
+import { useGLTF } from "@react-three/drei";
 import type {
   Component,
   ComponentMesh,
   ComponentPrimitive,
 } from "../types";
 import { MODELS, type ModelDef } from "./models";
+import { fromOverlay } from "./overlay";
+import { usafChartTexture, type Polarity } from "./usaf1951";
 
 const DEG = Math.PI / 180;
 const DISC = new Set(["lens", "polarizer", "mirror", "iris"]);
@@ -102,7 +104,7 @@ function UsdMesh({ data, componentType, metalness, roughness, selected, ghost }:
   useEffect(() => () => geometry.dispose(), [geometry]);
 
   const color = new THREE.Color(...data.color);
-  const opacity = ghost ? 0.4 : 1;
+  const opacity = ghost ? Math.min(data.opacity, 0.4) : data.opacity;
   const transparent = ghost || data.opacity < 1;
   const glass = !ghost && data.opacity < 1;
   const mirror = !ghost && componentType === "mirror";
@@ -120,13 +122,89 @@ function UsdMesh({ data, componentType, metalness, roughness, selected, ghost }:
           thickness: glass ? 1.5 : 0,
           ior: glass ? 1.5 : 1,
           envMapIntensity: glass ? 1.2 : 1,
-          depthWrite: !ghost,
+          depthWrite: !transparent,
           // Respect the USDA setting even for transparent optical surfaces so
           // planar geometry remains visible from both viewing directions.
           side: data.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
         })}
       />
     </mesh>
+  );
+}
+
+// Chrome, a shade darker than the glass slab it sits on, so a negative chart
+// reads the way it does on the bench: dark field, bright bars.
+const CHROME = "#3a3d42";
+
+function hasUsafChart(c: Component): boolean {
+  return c.attrs.pattern === "USAF1951";
+}
+
+/** One face's decal: a plane just proud of the glass, facing outwards. */
+function ChartFace({ texture, sizeY, sizeZ, offsetX, ghost }: {
+  texture: THREE.Texture;
+  sizeY: number;
+  sizeZ: number;
+  // Signed: +1 puts the decal on the +X face, -1 on the -X face.
+  offsetX: number;
+  ghost: boolean;
+}) {
+  const front = offsetX > 0;
+  return (
+    <mesh
+      position={[offsetX, 0, 0]}
+      // Turn the plane's +Z normal outwards. The u axis then lands on +Y for
+      // the front face and -Y for the back, which is what makes each chart
+      // read the right way round to a viewer on that side.
+      rotation={[0, front ? Math.PI / 2 : -Math.PI / 2, 0]}
+      raycast={() => null}
+      renderOrder={1}
+    >
+      <planeGeometry args={[sizeY, sizeZ]} />
+      <meshBasicMaterial
+        map={texture}
+        transparent
+        opacity={ghost ? 0.4 : 1}
+        side={THREE.FrontSide}
+        depthWrite={false}
+        toneMapped={false}
+      />
+    </mesh>
+  );
+}
+
+/**
+ * The resolution chart, as a decal on both faces of a target.
+ *
+ * No target CAD in the library carries the pattern, so it is drawn rather than
+ * modelled — see usaf1951.ts. Both faces get the same chart, each readable
+ * from its own side: the substrate is opaque, so a single decal on +X left the
+ * part a blank gray slab whenever you orbited behind it.
+ *
+ * The decals live inside the modelRotation group — the chart is printed on the
+ * glass and must turn with it — and that rotation is about X, which is the
+ * planes' own normal, so it is cancelled here. Otherwise it spins the chart in
+ * its own plane and lays the labels on their side.
+ */
+function UsafChart({ c, ghost, modelRotX }: {
+  c: Component;
+  ghost: boolean;
+  modelRotX: number;
+}) {
+  const sizeY = num(c, "sizeY_mm", 25.4);
+  const sizeZ = num(c, "sizeZ_mm", 25.4);
+  const thickness = num(c, "sizeX_mm", 1.5);
+  const polarity: Polarity = c.attrs.polarity === "positive" ? "positive" : "negative";
+  const texture = useMemo(
+    () => usafChartTexture(Math.max(sizeY, sizeZ), polarity, CHROME),
+    [sizeY, sizeZ, polarity],
+  );
+  const offset = thickness / 2 + 0.02;
+  return (
+    <group rotation={[(90 - modelRotX) * DEG, 0, 0]}>
+      <ChartFace {...{ texture, sizeY, sizeZ, ghost }} offsetX={offset} />
+      <ChartFace {...{ texture, sizeY, sizeZ, ghost }} offsetX={-offset} />
+    </group>
   );
 }
 
@@ -507,7 +585,7 @@ function Part({ c, selected }: { c: Component; selected: boolean }) {
 
 export default function Component3D({
   c, selected, onSelect, onDoubleClick, onMove,
-  setRef, ghost = false, interactive = true, modelOptions = [], onChangeModel,
+  setRef, ghost = false, interactive = true,
 } : {
   c: Component;
   selected: boolean;
@@ -527,8 +605,6 @@ export default function Component3D({
   setRef: (name: string, ref: THREE.Group | null) => void;
   ghost?: boolean;
   interactive?: boolean;
-  modelOptions?: string[];
-  onChangeModel?: (asset: string) => void;
 }) {
   const ref = useRef<THREE.Group>(null!);
   const fr = footRadius(c);
@@ -560,10 +636,13 @@ export default function Component3D({
       position={[c.x, c.y, c.z]}
       rotation={[c.rotX * DEG, c.rotY * DEG, c.rotZ * DEG]}
       onClick={ghost || !interactive ? undefined : (e) => {
+        // Clicks on a floating card in the scene are not clicks on the bench.
+        if (fromOverlay(e.nativeEvent.target)) return;
         e.stopPropagation();
         onSelect(c.name, e.ctrlKey || e.metaKey);
       }}
       onDoubleClick={ghost || !interactive ? undefined : (e) => {
+        if (fromOverlay(e.nativeEvent.target)) return;
         e.stopPropagation();
         onDoubleClick?.(c.name);
       }}
@@ -592,32 +671,17 @@ export default function Component3D({
                 {DISC.has(c.type) && <MountRing r={discRadius(c)} selected={selected} />}
               </>
             )}
+            {hasUsafChart(c) && (
+              <UsafChart c={c} ghost={ghost} modelRotX={modelRotation[0]} />
+            )}
           </group>
         </group>
       </group>
 
-      {selected && (c.type === "holder" || c.type === "post") && (
-        <Html position={[0, 0, 35]} center zIndexRange={[20, 10]}>
-          <div
-            className="model-picker-popover"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <label htmlFor={`model-picker-${c.name}`}>型番</label>
-            <select
-              id={`model-picker-${c.name}`}
-              value={c.asset ?? ""}
-              onChange={(event) => onChangeModel?.(event.target.value)}
-            >
-              {modelOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option.split("/").pop()?.replace(/-Step\.usda$/, "")}
-                </option>
-              ))}
-            </select>
-          </div>
-        </Html>
-      )}
+      {/* The 型番 picker for a holder/post lives in the Inspector, not on a card
+          floating over the bench: it used to pop up on every selection, cover
+          the parts behind it, and — being a drei <Html> inside the element R3F
+          listens on — steal the clicks meant for it. */}
 
       {selected && (
         <mesh position={[selectionRingX, 0, selectionRingZ]}>

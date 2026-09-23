@@ -111,6 +111,41 @@ class BeamTracerTests(unittest.TestCase):
         self.assertLess(segments[2]["pts"][1][0], 0.0)
         self.assertEqual(segments[2]["intensity"], 0.5)
 
+    def test_detector_with_internal_split_plane_continues_and_reflects_up(self):
+        segments = beam_tracer.trace_lasers([
+            component("Laser", "laser", 0),
+            component(
+                "SI254", "detector", 100,
+                sizeX_mm=50.8, sizeY_mm=48.3, sizeZ_mm=55.9,
+                beamBehavior="split", splitRatio=0.5,
+                splitPlaneRadius_mm=19,
+                splitPlaneCenterX_mm=2.526,
+                splitPlaneCenterY_mm=0,
+                splitPlaneCenterZ_mm=-2.131,
+                splitPlaneNormalX=1,
+                splitPlaneNormalY=0,
+                splitPlaneNormalZ=-1,
+                blockPlaneRadius_mm=12.7,
+                blockPlaneCenterX_mm=0,
+                blockPlaneCenterY_mm=0,
+                blockPlaneCenterZ_mm=23,
+                blockPlaneNormalX=0,
+                blockPlaneNormalY=0,
+                blockPlaneNormalZ=1,
+            ),
+        ])
+
+        self.assertEqual(len(segments), 3)
+        hit = segments[0]["pts"][1]
+        self.assertAlmostEqual(hit[0], 104.657, places=3)
+        self.assertAlmostEqual(hit[2], 0.0, places=6)
+        self.assertGreater(segments[1]["pts"][1][0], hit[0])
+        self.assertAlmostEqual(segments[1]["pts"][1][2], 0.0, places=6)
+        self.assertAlmostEqual(segments[2]["pts"][1][0], hit[0], places=6)
+        self.assertAlmostEqual(segments[2]["pts"][1][2], 23.0, places=6)
+        self.assertEqual(segments[1]["intensity"], 0.5)
+        self.assertEqual(segments[2]["intensity"], 0.5)
+
     def test_transmissive_lens_continues_until_detector(self):
         segments = beam_tracer.trace_lasers([
             component("Laser", "laser", 0),
@@ -240,6 +275,32 @@ class BeamTracerTests(unittest.TestCase):
         self.assertEqual(len(back), 2)
         self.assertGreater(front[-1]["pts"][1][1], 0)
         self.assertLess(back[-1]["pts"][1][1], 0)
+
+    def test_mount_can_transmit_through_multiple_aperture_axes(self):
+        mount_attrs = {
+            "sizeX_mm": 38.1,
+            "sizeY_mm": 38.1,
+            "sizeZ_mm": 38.1,
+            "beamApertureAxes": "XY",
+            "beamApertureRadius_mm": 12.8003,
+        }
+        mount = component("Cage", "mount", 100, **mount_attrs)
+        x_path = beam_tracer.trace_lasers([
+            component("LaserX", "laser", 0),
+            mount,
+            component("DetectorX", "detector", 150),
+        ])
+        y_laser = component("LaserY", "laser", 100, y=-100, rot_z=90)
+        y_detector = component("DetectorY", "detector", 100, y=100)
+        y_path = beam_tracer.trace_lasers([y_laser, mount, y_detector])
+        frame_path = beam_tracer.trace_lasers([
+            component("FrameLaser", "laser", 0, y=15),
+            mount,
+        ])
+
+        self.assertEqual(x_path[-1]["to"], "DetectorX")
+        self.assertEqual(y_path[-1]["to"], "DetectorY")
+        self.assertEqual(frame_path[-1]["to"], "Cage")
 
     def test_component_can_be_excluded_from_beam_collision(self):
         mount = component(

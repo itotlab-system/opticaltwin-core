@@ -1,6 +1,9 @@
 import type {
+  Component,
   ComponentGroup,
   ComponentUpdate,
+  FigureCallout,
+  MovePayload,
   PinAnnotation,
   ProjectData,
   ProjectSummary,
@@ -28,9 +31,32 @@ export const api = {
 
   removeProject: (name: string) => post(`/api/projects/${name}/remove`),
 
+  // The backend sanitises the typed name, so the one it returns is authoritative.
+  renameProject: (name: string, newName: string): Promise<{ ok: boolean; name: string }> =>
+    post(`/api/projects/${name}/rename`, { name: newName }),
+
   // Copy a whole project; the backend picks the <name>_copy name.
   duplicateProject: (name: string): Promise<{ ok: boolean; name: string }> =>
     post(`/api/projects/${name}/duplicate`),
+
+  // File a project into a folder and/or archive it. Each field is applied only
+  // if sent, so archiving never disturbs the folder. folder: "" un-files it.
+  setProjectMeta: (
+    name: string,
+    meta: { folder?: string; archived?: boolean }
+  ): Promise<{ ok: boolean; project: ProjectSummary }> =>
+    post(`/api/projects/${name}/meta`, meta),
+
+  // One catalogue part's geometry, fetched only when the part browser is about
+  // to draw its tile. `hi` here is affordable because it is one part at a time
+  // and the result becomes a picture; it never enters the project payload.
+  libraryPreview: (
+    asset: string,
+    renderMode: "hi" | "lo" = "hi"
+  ): Promise<{ component: Component }> =>
+    fetch(
+      `/api/library/preview/${encodeURI(asset)}?renderMode=${renderMode}`
+    ).then(j),
 
   getProject: (p: string, renderMode: "hi" | "lo" = "lo"): Promise<ProjectData> =>
     fetch(`/api/projects/${p}?renderMode=${renderMode}`).then(j),
@@ -42,6 +68,8 @@ export const api = {
   ): Promise<ProjectData & { ok: boolean }> =>
     post(`/api/projects/${p}/board/model`, { asset, renderMode }),
 
+  // Moves return a MovePayload, not the whole scene: transforms plus the
+  // retraced beam, with no geometry. Fold it in with mergeMove.
   updateComponent: (
     p: string,
     c: string,
@@ -54,7 +82,7 @@ export const api = {
       rotZ?: number;
       renderMode?: "hi" | "lo";
     }
-  ): Promise<ProjectData & { ok: boolean }> =>
+  ): Promise<MovePayload> =>
     post(`/api/projects/${p}/components/${c}`, body),
 
   updateComponentModel: (
@@ -65,12 +93,12 @@ export const api = {
   ): Promise<ProjectData & { ok: boolean }> =>
     post(`/api/projects/${p}/components/${c}/model`, { asset, renderMode }),
 
-  // Move several components in one request — one USD save, one glb rebuild.
+  // Move several components in one request — one USD save, one beam retrace.
   updateComponents: (
     p: string,
     updates: ComponentUpdate[],
     renderMode: "hi" | "lo" = "lo"
-  ): Promise<ProjectData & { ok: boolean }> =>
+  ): Promise<MovePayload> =>
     post(`/api/projects/${p}/components/batch`, { updates, renderMode }),
 
   // Replaces the whole group list: create, rename and ungroup all go through it.
@@ -100,6 +128,14 @@ export const api = {
   updatePins: (p: string, pins: PinAnnotation[]): Promise<{ ok: boolean; pins: PinAnnotation[] }> =>
     post(`/api/projects/${p}/pins`, { pins }),
 
+  // Replace the project's figure callouts. Whole-list, like pins and groups:
+  // one drag or one delete is one undo step either way.
+  updateCallouts: (
+    p: string,
+    callouts: FigureCallout[]
+  ): Promise<{ ok: boolean; callouts: FigureCallout[]; canUndo?: boolean; canRedo?: boolean }> =>
+    post(`/api/projects/${p}/callouts`, { callouts }),
+
   // Switch lasers on or off. A laser that is off emits nothing, so the bench
   // goes dark. Omit `names` to switch every laser in the project.
   switchLasers: (
@@ -124,7 +160,7 @@ export const api = {
       clear?: boolean;
     },
     renderMode: "hi" | "lo" = "lo"
-  ): Promise<ProjectData & { ok: boolean }> =>
+  ): Promise<MovePayload> =>
     post(`/api/projects/${p}/beam/shape`, { ...body, renderMode }),
 
   // Set or clear a pin override on a beam node. position=null clears the pin.

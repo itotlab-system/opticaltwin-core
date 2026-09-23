@@ -1,6 +1,7 @@
 // Swatch colors per component type (matches the USD displayColors loosely).
 export const TYPE_COLOR: Record<string, string> = {
   laser: "#33cc44",
+  led: "#f2e6a8",
   polarizer: "#6a5acd",
   lens: "#66b3ff",
   cylindrical_lens: "#7fd0e6",

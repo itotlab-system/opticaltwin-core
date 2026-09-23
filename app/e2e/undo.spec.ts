@@ -5,7 +5,7 @@ import type { Page } from "@playwright/test";
 // history is a stack of USD layer snapshots on the server, so a delete comes
 // back with its reference and attributes intact.
 
-import { loginIfNeeded, openProject } from "./helpers";
+import { expandAllOutlinerTypes, loginIfNeeded, openProject } from "./helpers";
 
 type Comp = { name: string; x: number; y: number; type: string };
 
@@ -30,6 +30,7 @@ test("Ctrl+Z rewinds an edit and Ctrl+Shift+Z replays it",
       await loginIfNeeded(page);
       await openProject(page, project);
       await expect(page.locator("canvas")).toBeVisible();
+      await expandAllOutlinerTypes(page);
 
       const rows = page.locator(".outliner .node");
       await expect(rows.first()).toBeVisible();
@@ -94,6 +95,7 @@ test("repeated undo walks all the way back to the starting layout",
       await loginIfNeeded(page);
       await openProject(page, project);
       await expect(page.locator("canvas")).toBeVisible();
+      await expandAllOutlinerTypes(page);
 
       const rows = page.locator(".outliner .node");
       await expect(rows.first()).toBeVisible();

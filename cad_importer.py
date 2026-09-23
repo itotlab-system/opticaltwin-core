@@ -23,6 +23,20 @@ Examples:
     # Generate every Laser STEP; each CAD model's longitudinal axis is detected
     python cad_importer.py cad/Laser --type laser --lod both \
         --source-forward-axis auto
+
+    # An assembly whose STEP carries no colors: keep its leaves as named parts
+    # and paint them. Unnamed leaves fall back to --color.
+    python cad_importer.py cad/SLM/EXULUS-SE1-Step.step --type slm --lod both \
+        --preserve-step-parts --color 0.051269 0.051269 0.051269 \
+        --part-color EEC4011_housing=0.62,0.09,0.10 \
+        --part-color RDP551F_MODULE=0.32,0.34,0.37
+
+    # A one-leaf assembly whose pieces come from STEP face colors instead: aim
+    # at the meshes this writer names. Narrow rules first, broad ones after.
+    python cad_importer.py cad/Mount/ID25_M-Step.step --type iris --lod both \
+        --mesh-color CADMesh_004=0.35,0.36,0.38 \
+        --mesh-color CADMesh=0.051269,0.051269,0.051269 \
+        --mesh-opacity CADMesh_004=0.2
 """
 
 import argparse
@@ -40,6 +54,7 @@ from OCP.STEPControl import STEPControl_Reader
 from OCP.STEPCAFControl import STEPCAFControl_Reader
 from OCP.TopoDS import TopoDS_Shape, TopoDS_Compound
 from OCP.BRep import BRep_Builder
+from OCP.BRepGProp import BRepGProp
 from OCP.BRepMesh import BRepMesh_IncrementalMesh
 from OCP.BRep import BRep_Tool
 from OCP.BRepTools import BRepTools
@@ -57,6 +72,7 @@ from OCP.TDF import TDF_Label, TDF_LabelSequence
 from OCP.TDataStd import TDataStd_Name
 from OCP.TDocStd import TDocStd_Document
 from OCP.Quantity import Quantity_ColorRGBA
+from OCP.GProp import GProp_GProps
 from OCP.XCAFApp import XCAFApp_Application
 from OCP.XCAFDoc import (
     XCAFDoc_ColorType,
@@ -98,6 +114,7 @@ class MeshPart:
     color: tuple[float, float, float] | None
     opacity: float | None = None
     group_name: str | None = None
+    mesh_name: str | None = None
 
 
 @dataclass
@@ -159,6 +176,88 @@ def parse_attr_value(value: str) -> Any:
         return float(value)
     except ValueError:
         return value
+
+
+def parse_part_colors(
+    items: list[str],
+) -> list[tuple[str, tuple[float, float, float]]]:
+    """Parse --part-color NAME=R,G,B rules, keeping the order they were given.
+
+    Order matters: the first rule whose name appears in a STEP leaf's name wins,
+    so a broad rule can be listed after the narrow ones it would otherwise
+    swallow.
+    """
+    rules = []
+    for item in items:
+        if "=" not in item:
+            raise ValueError(
+                f"部品色は NAME=R,G,B 形式で指定してください: {item}"
+            )
+        name, channels = item.split("=", 1)
+        name = name.strip()
+        if not name:
+            raise ValueError(f"部品名が空です: {item}")
+        try:
+            color = tuple(
+                float(channel) for channel in channels.replace(" ", "").split(",")
+            )
+        except ValueError:
+            raise ValueError(f"色は0〜1の数値3つで指定してください: {item}")
+        if len(color) != 3 or not all(0.0 <= channel <= 1.0 for channel in color):
+            raise ValueError(f"色は0〜1の数値3つで指定してください: {item}")
+        rules.append((name.lower(), color))
+    return rules
+
+
+def match_part_color(
+    part_name: str,
+    rules: list[tuple[str, tuple[float, float, float]]],
+) -> tuple[float, float, float] | None:
+    """Return the color for a STEP leaf, by case-insensitive substring match.
+
+    Substring rather than exact: vendor assemblies name their leaves things like
+    `EEC4011_housing_STEP`, and repeated occurrences gain a `_002` suffix, so
+    pinning a rule to the whole name would miss all but the first.
+    """
+    lowered = part_name.lower()
+    for name, color in rules:
+        if name in lowered:
+            return color
+    return None
+
+
+def parse_mesh_opacities(items: list[str]) -> list[tuple[str, float]]:
+    """Parse --mesh-opacity NAME=VALUE rules, keeping the order they were given.
+
+    Same first-match-wins ordering as parse_part_colors.
+    """
+    rules = []
+    for item in items:
+        if "=" not in item:
+            raise ValueError(
+                f"メッシュ不透明度は NAME=VALUE 形式で指定してください: {item}"
+            )
+        name, value = item.split("=", 1)
+        name = name.strip()
+        if not name:
+            raise ValueError(f"メッシュ名が空です: {item}")
+        try:
+            opacity = float(value)
+        except ValueError:
+            raise ValueError(f"不透明度は0〜1の数値で指定してください: {item}")
+        if not 0.0 <= opacity <= 1.0:
+            raise ValueError(f"不透明度は0〜1の数値で指定してください: {item}")
+        rules.append((name.lower(), opacity))
+    return rules
+
+
+def match_mesh_rule(mesh_name: str, rules: list[tuple[str, Any]]):
+    """Return the first rule value whose name is a substring of mesh_name."""
+    lowered = mesh_name.lower()
+    for name, value in rules:
+        if name in lowered:
+            return value
+    return None
 
 
 def parse_optics_attrs(items: list[str]) -> dict[str, Any]:
@@ -272,6 +371,40 @@ def combine_step_shapes(shapes: list[TopoDS_Shape]) -> TopoDS_Shape:
     for shape in shapes:
         builder.Add(compound, shape)
     return compound
+
+
+def shape_solids(shape: TopoDS_Shape) -> list[TopoDS_Shape]:
+    """Return the independent solid bodies contained in a STEP shape."""
+    solids = []
+    explorer = TopExp_Explorer(shape, TopAbs_SOLID)
+    while explorer.More():
+        solids.append(TopoDS.Solid_s(explorer.Current()))
+        explorer.Next()
+    return solids
+
+
+def solid_volume(shape: TopoDS_Shape) -> float:
+    """Return the exact CAD volume of a solid in cubic model units."""
+    properties = GProp_GProps()
+    BRepGProp.VolumeProperties_s(shape, properties)
+    return float(properties.Mass())
+
+
+def shape_shells(shape: TopoDS_Shape) -> list[TopoDS_Shape]:
+    """Return every shell contained in a STEP shape."""
+    shells = []
+    explorer = TopExp_Explorer(shape, TopAbs_SHELL)
+    while explorer.More():
+        shells.append(TopoDS.Shell_s(explorer.Current()))
+        explorer.Next()
+    return shells
+
+
+def shell_area(shape: TopoDS_Shape) -> float:
+    """Return the exact surface area of a shell in square model units."""
+    properties = GProp_GProps()
+    BRepGProp.SurfaceProperties_s(shape, properties)
+    return float(properties.Mass())
 
 
 def load_step_with_colors(step_path: Path):
@@ -951,16 +1084,22 @@ def extract_source_regions(
 
     regions = []
     for region_shape in region_shapes:
-        if ignore_step_colors:
-            points, indices = extract_mesh_data(region_shape)
-            triangle_colors = [fallback_color] * (len(indices) // 3)
-        else:
-            parts = extract_colored_mesh_data(
-                region_shape,
-                color_tool,
-                fallback_color,
-            )
-            points, indices, triangle_colors = combine_mesh_parts(parts)
+        # A large vendor assembly (Thorlabs DET100A2 ships 106 solids) can carry
+        # a solid that triangulates to nothing. Skipping it keeps the other 105;
+        # an input with no meshable region at all still raises below.
+        try:
+            if ignore_step_colors:
+                points, indices = extract_mesh_data(region_shape)
+                triangle_colors = [fallback_color] * (len(indices) // 3)
+            else:
+                parts = extract_colored_mesh_data(
+                    region_shape,
+                    color_tool,
+                    fallback_color,
+                )
+                points, indices, triangle_colors = combine_mesh_parts(parts)
+        except RuntimeError:
+            continue
         if indices:
             regions.append(SourceRegion(points, indices, triangle_colors))
     if not regions:
@@ -2560,6 +2699,8 @@ def write_usda_mesh(
     display_color: tuple[float, float, float] = DEFAULT_DISPLAY_COLOR,
     display_opacity: float = 1.0,
     mesh_parts: list[MeshPart] | None = None,
+    mesh_color_rules: list[tuple[str, tuple[float, float, float]]] | None = None,
+    mesh_opacity_rules: list[tuple[str, float]] | None = None,
 ) -> None:
     """
     頂点座標と三角形インデックスからUsdGeom.Meshを作成し、
@@ -2637,7 +2778,7 @@ def write_usda_mesh(
             for candidate in parts
         )
         group_index = group_mesh_counts[part.group_name]
-        mesh_name = (
+        mesh_name = part.mesh_name or (
             "CADMesh"
             if group_part_count == 1
             else f"CADMesh_{group_index:03d}"
@@ -2661,10 +2802,20 @@ def write_usda_mesh(
         mesh.CreateFaceVertexIndicesAttr(part.face_vertex_indices)
         mesh.CreateSubdivisionSchemeAttr().Set(UsdGeom.Tokens.none)
         mesh.CreateDoubleSidedAttr().Set(True)
-        if part.color is not None:
+        # --mesh-color / --mesh-opacity address the mesh prims this loop names,
+        # not the STEP leaves --part-color matches: a model whose pieces come
+        # from face colors rather than from an assembly tree (an iris, whose
+        # whole CAD is one leaf) has no leaf names to aim at.
+        mesh_color = match_mesh_rule(mesh_name, mesh_color_rules or [])
+        mesh_opacity = match_mesh_rule(mesh_name, mesh_opacity_rules or [])
+        if mesh_color is not None:
+            mesh.CreateDisplayColorAttr([mesh_color])
+        elif part.color is not None:
             mesh.CreateDisplayColorAttr([part.color])
         mesh.CreateDisplayOpacityAttr([
-            display_opacity if part.opacity is None else part.opacity
+            mesh_opacity
+            if mesh_opacity is not None
+            else display_opacity if part.opacity is None else part.opacity
         ])
         mesh.CreateExtentAttr(UsdGeom.PointBased.ComputeExtent(usd_points))
 
@@ -2837,6 +2988,54 @@ def build_parser() -> argparse.ArgumentParser:
         help="STEPアセンブリの末端部品を個別のXformとしてhiへ保持します",
     )
     parser.add_argument(
+        "--preserve-step-solids",
+        action="store_true",
+        help=(
+            "STEP内の独立したSolidを体積降順のCADMesh_001からの"
+            "個別Meshとしてhiへ保持します"
+        ),
+    )
+    parser.add_argument(
+        "--preserve-step-shells",
+        action="store_true",
+        help=(
+            "STEP内のShellを表面積降順のCADMesh_001からの"
+            "個別Meshとしてhiへ保持します"
+        ),
+    )
+    parser.add_argument(
+        "--part-color",
+        action="append",
+        default=[],
+        metavar="NAME=R,G,B",
+        help=(
+            "STEP末端部品ごとの0〜1 RGB表示色。名前は部分一致。"
+            "--preserve-step-partsと併用します。複数回指定できます"
+        ),
+    )
+    parser.add_argument(
+        "--mesh-color",
+        action="append",
+        default=[],
+        metavar="NAME=R,G,B",
+        help=(
+            "生成後のMesh名ごとの0〜1 RGB表示色（例: CADMesh_004=0,0,0）。"
+            "名前は部分一致、先に書いた規則が優先。"
+            "Meshを書き出すLOD（hiと--lo-proxy meshのlo）に適用します"
+        ),
+    )
+    parser.add_argument(
+        "--mesh-opacity",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help=(
+            "生成後のMesh名ごとの0（透明）〜1（不透明）。"
+            "名前は部分一致、先に書いた規則が優先。"
+            "Meshを書き出すLOD（hiと--lo-proxy meshのlo）に適用します"
+        ),
+    )
+    parser.add_argument(
         "--opacity",
         type=float,
         default=1.0,
@@ -2925,6 +3124,16 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("--colorの各値は0〜1で指定してください")
     if not 0.0 <= args.opacity <= 1.0:
         parser.error("--opacityは0〜1で指定してください")
+    if args.part_color and not args.preserve_step_parts:
+        # Without the leaf Xforms there are no part names to match against, so
+        # the rules would be silently ignored.
+        parser.error("--part-colorは--preserve-step-partsと併用してください")
+    if args.part_color and args.ignore_step_colors:
+        # --ignore-step-colors takes the branch that flattens the assembly into
+        # one mesh, discarding the very names --part-color matches on.
+        parser.error(
+            "--part-colorと--ignore-step-colorsは同時に指定できません"
+        )
     if args.metalness is not None and not 0.0 <= args.metalness <= 1.0:
         parser.error("--metalnessは0〜1で指定してください")
     if args.roughness is not None and not 0.0 <= args.roughness <= 1.0:
@@ -2964,6 +3173,9 @@ def main(argv: list[str] | None = None) -> None:
 
     root_prim_name = args.root_prim or usd_identifier(args.component_type.title())
     optics_attrs = parse_optics_attrs(args.attr)
+    part_color_rules = parse_part_colors(args.part_color)
+    mesh_color_rules = parse_part_colors(args.mesh_color)
+    mesh_opacity_rules = parse_mesh_opacities(args.mesh_opacity)
     lcp6x_component = (
         args.component_type.lower() == "mount"
         and Path(component_name).name.lower() == "lcp6x-step"
@@ -3053,7 +3265,46 @@ def main(argv: list[str] | None = None) -> None:
             )
         ]
 
-    def all_colored_mesh_parts(use_step_colors: bool):
+    def all_colored_mesh_parts(
+        use_step_colors: bool,
+        preserve_solids: bool = False,
+        preserve_shells: bool = False,
+    ):
+        if preserve_shells or preserve_solids:
+            parts = []
+            mesh_index = 0
+            for source_index, source_shape in enumerate(source_shapes):
+                source_color = (
+                    tuple(args.color)
+                    if source_index == 0
+                    else (0.0524, 0.0524, 0.0524)
+                )
+                shapes = sorted(
+                    (
+                        shape_shells(source_shape)
+                        if preserve_shells
+                        else shape_solids(source_shape)
+                    ),
+                    key=shell_area if preserve_shells else solid_volume,
+                    reverse=True,
+                )
+                for preserved_shape in shapes:
+                    shape_points, shape_indices = extract_mesh_data(
+                        preserved_shape
+                    )
+                    parts.append(MeshPart(
+                        shape_points,
+                        shape_indices,
+                        source_color,
+                        opacity=(
+                            args.opacity if source_index == 0 else 1.0
+                        ),
+                        mesh_name=f"CADMesh_{mesh_index + 1:03d}",
+                    ))
+                    mesh_index += 1
+            if parts:
+                return parts
+
         if use_step_colors and part_occurrences:
             parts = []
             source_color_tool = source_color_tools[0]
@@ -3063,9 +3314,19 @@ def main(argv: list[str] | None = None) -> None:
                     source_color_tool,
                     None,
                 )
+                override = match_part_color(part_name, part_color_rules)
                 for part in source_parts:
                     part.opacity = args.opacity
                     part.group_name = part_name
+                    if override is not None:
+                        part.color = override
+                    elif part.color is None and part_color_rules:
+                        # A STEP with no presentation colors leaves every face
+                        # at None, which writes a mesh with no displayColor at
+                        # all -- the near-white default. Once the caller is
+                        # hand-coloring this model, --color is the shade for
+                        # everything they did not name.
+                        part.color = tuple(args.color)
                 parts.extend(source_parts)
             return parts
 
@@ -3433,7 +3694,15 @@ def main(argv: list[str] | None = None) -> None:
         inspect_mesh(shape, verbose_faces=args.verbose_faces)
 
         use_step_colors = lod_name == "hi" and not args.ignore_step_colors
-        mesh_parts = all_colored_mesh_parts(use_step_colors)
+        mesh_parts = all_colored_mesh_parts(
+            use_step_colors,
+            preserve_solids=(
+                lod_name == "hi" and args.preserve_step_solids
+            ),
+            preserve_shells=(
+                lod_name == "hi" and args.preserve_step_shells
+            ),
+        )
         if lod_name == "hi" and reference_source is not None:
             reference_shape, _, reference_color_tool = reference_source
             mesh_shape(
@@ -3511,6 +3780,8 @@ def main(argv: list[str] | None = None) -> None:
             display_color=tuple(args.color),
             display_opacity=args.opacity,
             mesh_parts=mesh_parts,
+            mesh_color_rules=mesh_color_rules,
+            mesh_opacity_rules=mesh_opacity_rules,
         )
         configure_generated_asset(
             output_path,

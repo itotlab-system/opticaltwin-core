@@ -5,14 +5,24 @@ import Viewport, {
   type ViewportHandle,
 } from "./scene/Viewport";
 import Outliner from "./ui/Outliner";
+import PartBrowser from "./ui/PartBrowser";
 import Inspector from "./ui/Inspector";
 import SegmentPopover from "./ui/SegmentPopover";
 import type { SegmentShape } from "./beamShape";
 import ProjectGallery from "./ui/ProjectGallery";
 import Toggles from "./ui/Toggles";
-import { useSettings } from "./settings";
+import CalloutLayer from "./ui/CalloutLayer";
+import FigureExportDialog, {
+  DEFAULT_FIGURE_SETTINGS,
+  type FigureExportSettings,
+} from "./ui/FigureExportDialog";
+import { AnchorStore } from "./scene/anchors";
+import { composeFigure } from "./figureExport";
+import { createCalloutId, defaultCalloutText, visibleCallouts } from "./callouts";
+import { useSettings, moveViewportBg } from "./settings";
 import { api } from "./api";
 import { buildSnapshotFilename, downloadBlob } from "./snapshot";
+import { modelOptionsFor } from "./modelPicker";
 
 // Before:
 // import type { BeamNode, BeamSegment, Component, ParaxialSegment, ProjectData, ProjectSummary, Template } from "./types";
@@ -25,11 +35,15 @@ import type {
   Component,
   ComponentGroup,
   ComponentUpdate,
+  FigureCallout,
+  MovePayload,
   PinAnnotation,
   ProjectData,
   ProjectSummary,
   Template,
 } from "./types";
+import { EMITTER_TYPES } from "./types";
+import { mergeMove, needsFullReload } from "./moveMerge";
 import {
   groupOf,
   groupsCovering,
@@ -118,12 +132,38 @@ function CameraIcon() {
   );
 }
 
+/** Show/hide for the figure-label layer; struck through when it is hidden. */
+function EyeIcon({ off = false }: { off?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M2 12s3.8-6 10-6 10 6 10 6-3.8 6-10 6S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+      {off && <path d="M4 20 20 4" />}
+    </svg>
+  );
+}
+
 export default function App() {
-  const { t } = useSettings();
+  const { t, setBgProject } = useSettings();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [current, setCurrent] = useState<string | null>(null);   // null = gallery
   const [data, setData] = useState<ProjectData | null>(null);
+  // Mirrors `data` for the debounced saves, which run outside render and would
+  // otherwise merge a move into a scene captured before the optimistic edit.
+  const dataRef = useRef<ProjectData | null>(null);
+  dataRef.current = data;
   // Components are selected as a set so a whole group can be moved at once;
   // a single-part selection is just a set of one.
   const [selection, setSelection] = useState<string[]>([]);
@@ -139,6 +179,7 @@ export default function App() {
   const pasteStep = useRef(0);
   const [asset, setAsset] = useState("");
   const [isPlacing, setIsPlacing] = useState(false);
+  const [browsingParts, setBrowsingParts] = useState(false);
   const [status, setStatus] = useState("");
   const [renderMode, setRenderMode] = useState<"lo" | "hi">("lo");
   // Which beam leg is being edited, straight in the 3D viewport.
@@ -180,6 +221,26 @@ export default function App() {
   // Selected color for newly created pins.
   const [pinColor, setPinColor] = useState<string>(PIN_COLOR_OPTIONS[0].value);
   const [pinEditor, setPinEditor] = useState<PinEditorState | null>(null);
+
+  // ----- figure callouts (the paper-figure labels) -----
+  // They live in `data`, not in a state of their own, so that every full
+  // payload — a delete, an undo, a reload — brings the authoritative list with
+  // it. Held separately they went stale the moment a labelled part was
+  // deleted, and the next drag then saved a label pointing at nothing.
+  // When on, clicking a part labels it instead of selecting it.
+  const [calloutMode, setCalloutMode] = useState(false);
+  const [selectedCalloutId, setSelectedCalloutId] = useState<string | null>(null);
+  // The whole layer on/off, on top of each label's own `hidden` flag. A bench
+  // being *arranged* wants the parts unobstructed; the labels are for the
+  // figure. What is on screen is what gets exported, so this switches both.
+  const [calloutsVisible, setCalloutsVisible] = useState(true);
+  const [figureExport, setFigureExport] = useState<FigureExportSettings | null>(null);
+  const [exporting, setExporting] = useState(false);
+  // Where every labelled part currently is on screen. One store for the app's
+  // lifetime: the projector writes into it every frame and the SVG layer reads
+  // it back, so it must not be replaced on re-render.
+  const anchorStore = useRef(new AnchorStore()).current;
+
   useEffect(() => { refreshGallery(); }, []);
 
   async function refreshGallery() {
@@ -195,6 +256,9 @@ export default function App() {
     const still = data?.beam.some((s) => s.key === selectedSegment.key);
     if (!still) setSelectedSegment(null);
   }, [data, selectedSegment]);
+
+  // The viewport background is per project, so hand the open one to settings.
+  useEffect(() => { setBgProject(current); }, [current]);
 
   // Load a project's full scene when one is opened.
   useEffect(() => {
@@ -217,6 +281,8 @@ export default function App() {
       setPins([]);
       setPinMode(false);
       setSelectedPinId(null);
+      setCalloutMode(false);
+      setSelectedCalloutId(null);
       setRenderMode("lo");
 
       return;
@@ -237,6 +303,8 @@ export default function App() {
       setPins(d.pins ?? []);
       setPinMode(false);
       setSelectedPinId(null);
+      setCalloutMode(false);
+      setSelectedCalloutId(null);
     })();
   }, [current]);
 
@@ -247,8 +315,12 @@ export default function App() {
     setCurrent(name);
   }
 
-  async function createProject(name: string, template: string) {
+  // `folder` is the gallery tab that was open — a project made while standing
+  // in a folder is filed there. Filed before the gallery refreshes, so the card
+  // never flashes up unfiled.
+  async function createProject(name: string, template: string, folder = "") {
     const r = await api.createProject(name, template);
+    if (folder) await api.setProjectMeta(r.name, { folder });
     await refreshGallery();
     openProject(r.name);
   }
@@ -256,13 +328,36 @@ export default function App() {
   async function deleteProject(name: string) {
     if (!confirm(t("delete_confirm", { name }))) return;
     await api.removeProject(name);
+    moveViewportBg(name, null);
     await refreshGallery();
   }
 
   // Copies the whole setup under <name>_copy — a safe place to try changes.
   async function duplicateProject(name: string) {
-    await api.duplicateProject(name);
+    const r = await api.duplicateProject(name);
+    // The copy inherits the original's background, like its folder.
+    moveViewportBg(name, r.name, true);
     await refreshGallery();
+  }
+
+  // Move a project into a folder, or archive it. Filing only — it never
+  // touches setup.usda, so a card's "last edited" and its thumbnail stand.
+  async function fileProject(
+    name: string,
+    meta: { folder?: string; archived?: boolean }
+  ) {
+    await api.setProjectMeta(name, meta);
+    await refreshGallery();
+  }
+
+  async function renameProject(name: string, newName: string) {
+    const r = await api.renameProject(name, newName);
+    moveViewportBg(name, r.name);
+    await refreshGallery();
+    // A pending copy still points at the old folder; follow it across (#207).
+    const clip = readClipboard();
+    if (clip?.project === name) writeClipboard({ ...clip, project: r.name });
+    if (current === name) setCurrent(r.name);
   }
 
   async function toggleRenderMode() {
@@ -279,21 +374,89 @@ export default function App() {
     setStatus(`${next.toUpperCase()} · ${d.components.length} components`);
   }
 
-  async function handleSnapshot() {
+  async function handleSnapshot(settings: FigureExportSettings) {
     if (!current) return;
+    setExporting(true);
+    try {
+      // Hide the selection gizmo/guides for a clean shot, then restore it.
+      const prevSelection = selection;
+      const prevSelectedPinId = selectedPinId;
+      const prevCalloutId = selectedCalloutId;
+      setSelection([]);
+      setSelectedPinId(null);
+      setSelectedCalloutId(null);
+      const frame = await viewportRef.current?.captureSnapshot({
+        scale: settings.scale,
+        background: settings.background,
+        hidePins: settings.hidePins,
+      });
+      setSelection(prevSelection);
+      setSelectedPinId(prevSelectedPinId);
+      setSelectedCalloutId(prevCalloutId);
 
-    // Hide the selection gizmo/guides for a clean shot, then restore it.
-    const prevSelection = selection;
-    const prevSelectedPinId = selectedPinId;
-    setSelection([]);
-    setSelectedPinId(null);
-    const blob = await viewportRef.current?.captureSnapshot();
-    setSelection(prevSelection);
-    setSelectedPinId(prevSelectedPinId);
+      if (!frame) return;
+      // The projected anchors are read *after* the capture, from the same store
+      // the on-screen layer is drawing from, so the leader lines in the file
+      // land exactly where they do on screen.
+      // The figure gets exactly the labels that are on screen: the layer switch
+      // and each label's own hide button are the user's answer to "what belongs
+      // in this picture", so the file must not quietly put them back.
+      const file = await composeFigure(
+        frame,
+        calloutsVisible ? visibleCallouts(callouts) : [],
+        anchorStore.points,
+        settings.format,
+        current ?? undefined,
+      );
+      downloadBlob(file, buildSnapshotFilename(current, new Date(), settings.format));
+      setFigureExport(null);
+      setStatus(t("snapshot_saved"));
+    } finally {
+      setExporting(false);
+    }
+  }
 
-    if (!blob) return;
-    downloadBlob(blob, buildSnapshotFilename(current));
-    setStatus(t("snapshot_saved"));
+  // ----- figure callouts -----
+  async function saveCallouts(next: FigureCallout[]) {
+    setData((d) => (d ? { ...d, callouts: next } : d));   // optimistic
+    if (!current) return;
+    const r = await api.updateCallouts(current, next);
+    setData((d) => (
+      d ? { ...d, callouts: r.callouts, canUndo: r.canUndo, canRedo: r.canRedo } : d
+    ));
+  }
+
+  function addCalloutFor(name: string) {
+    // One label per part: a second click on an already-labelled part selects
+    // the label it has instead of stacking an identical box on top of it.
+    const existing = callouts.find((c) => c.target === name);
+    if (existing) {
+      setSelectedCalloutId(existing.id);
+      return;
+    }
+    const callout: FigureCallout = {
+      id: createCalloutId(),
+      target: name,
+      text: defaultCalloutText(components.find((c) => c.name === name)),
+      // Up and to the right of the part, clear of the bench, where a figure
+      // usually wants it; the user drags it wherever the picture needs.
+      dx: 90,
+      // Stepped down for each label already up, so labelling four parts in a
+      // row doesn't bury three boxes under the fourth; they are dragged into
+      // place afterwards anyway.
+      dy: -70 - 30 * (callouts.length % 4),
+    };
+    void saveCallouts([...callouts, callout]);
+    setSelectedCalloutId(callout.id);
+  }
+
+  function updateCallout(next: FigureCallout) {
+    void saveCallouts(callouts.map((c) => (c.id === next.id ? next : c)));
+  }
+
+  function deleteCallout(id: string) {
+    setSelectedCalloutId((prev) => (prev === id ? null : prev));
+    void saveCallouts(callouts.filter((c) => c.id !== id));
   }
 
   // ----- editor state -----
@@ -302,11 +465,12 @@ export default function App() {
 
   const beam: BeamSegment[] = data?.beam ?? [];
   const groups: ComponentGroup[] = data?.groups ?? [];
-
+  const callouts: FigureCallout[] = data?.callouts ?? [];
   const selected = selection.length === 1 ? selection[0] : null;
-  // Lasers and whether any is emitting. `laserOn` is absent on lasers placed
-  // before the switch existed, which means on.
-  const lasers = components.filter((c) => c.type === "laser");
+  // Sources and whether any is emitting. `laserOn` is absent on lasers placed
+  // before the switch existed, which means on. The switch covers every emitter
+  // type (see EMITTER_TYPES in beam_tracer.py), not only lasers.
+  const lasers = components.filter((c) => EMITTER_TYPES.has(c.type));
   const lasersOn = lasers.some((c) => c.attrs.laserOn !== false);
 
   async function toggleLasers() {
@@ -361,6 +525,28 @@ export default function App() {
     await run();
   }
 
+  // Fold a move response into the scene instead of replacing it. The response
+  // carries transforms and the beam only, so every mesh keeps its identity and
+  // nothing is re-uploaded to the GPU. Returns the merged scene, or null if the
+  // component set has drifted and a full reload was needed instead.
+  async function applyMove(patch: MovePayload): Promise<ProjectData | null> {
+    const prev = dataRef.current;
+    if (!prev) return null;
+
+    if (needsFullReload(prev, patch)) {
+      if (!current) return null;
+      const fresh = await api.getProject(current, renderMode);
+      dataRef.current = fresh;
+      setData(fresh);
+      return fresh;
+    }
+
+    const next = mergeMove(prev, patch);
+    dataRef.current = next;
+    setData(next);
+    return next;
+  }
+
   function pushUpdate(comp: Component) {
     scheduleSave(async () => {
       setStatus(t("saving", { name: comp.name }));
@@ -375,7 +561,7 @@ export default function App() {
         renderMode,
       });
 
-      setData(updated);
+      await applyMove(updated);
       setStatus(t("saved", { name: comp.name }));
 
     });
@@ -498,9 +684,9 @@ export default function App() {
         waistW: shape.waistW,
         lengthMm: shape.lengthMm,
       }, renderMode);
-      setData(updated);
+      const merged = await applyMove(updated);
       setSelectedSegment(
-        updated.beam.find((s) => s.key === key) ?? null
+        (merged ?? updated).beam.find((s) => s.key === key) ?? null
       );
       setStatus(t("saved", { name: key }));
     });
@@ -514,7 +700,7 @@ export default function App() {
     scheduleSave(async () => {
       setStatus(t("saving_n", { n: rounded.length }));
       const updated = await api.updateComponents(current, rounded, renderMode);
-      setData(updated);
+      await applyMove(updated);
       setStatus(t("saved_n", { n: rounded.length }));
 
     });
@@ -522,6 +708,17 @@ export default function App() {
 
   function handleSelect(name: string | null, additive = false) {
     setSelectedPinId(null);
+    // In labelling mode a click on a part means "label this", not "select it";
+    // a click on empty space just clears the label selection.
+    if (calloutMode) {
+      setSelectedCalloutId(null);
+      if (name) addCalloutFor(name);
+      return;
+    }
+    setSelectedCalloutId(null);
+    // Picking anything else — a part, a pin, or empty space — closes the beam
+    // editor, so it needn't be dismissed with its ✕ every time.
+    setSelectedSegment(null);
     if (!name) {
       setSelection([]);
       setEnteredGroupId(null);
@@ -544,6 +741,7 @@ export default function App() {
     setEnteredGroupId(group.id);
     setSelection([name]);
     setSelectedPinId(null);
+    setSelectedSegment(null);
   }
 
   async function saveGroups(next: ComponentGroup[]) {
@@ -756,6 +954,13 @@ export default function App() {
     setStatus("Click on the breadboard to place the new component. (Esc to cancel)");
   }
 
+  /** A tile in the catalogue: select it and go straight into placing. */
+  function handlePickPart(picked: string) {
+    setAsset(picked);
+    setBrowsingParts(false);
+    handleStartPlacing();
+  }
+
   async function onPlace(point: THREE.Vector3) {
     if (!current || !asset) return;
     setIsPlacing(false);
@@ -870,6 +1075,11 @@ export default function App() {
         if (isPlacing) {
           setIsPlacing(false);
           setStatus(t("components_n", { n: components.length }));
+        } else if (calloutMode) {
+          // Leaves the labels on screen — Esc ends the labelling mode, it does
+          // not undo the figure.
+          setCalloutMode(false);
+          setSelectedCalloutId(null);
         } else if (enteredGroupId) {
           // Step back out of the group instead of dropping the selection.
           const group = groups.find((g) => g.id === enteredGroupId);
@@ -886,7 +1096,7 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [current, selection, selectedPinId, t, isPlacing, components,
-      renderMode, groups, enteredGroupId, clipboard, data]);
+      renderMode, groups, enteredGroupId, clipboard, data, calloutMode]);
 
   // ----- render -----
   if (!current) {
@@ -899,7 +1109,7 @@ export default function App() {
           </span>
 
           <div className="spacer" />
-          <Toggles />
+          <Toggles showBg={false} />
         </div>
 
         <ProjectGallery
@@ -909,6 +1119,8 @@ export default function App() {
           onCreate={createProject}
           onDelete={deleteProject}
           onDuplicate={duplicateProject}
+          onRename={renameProject}
+          onFile={fileProject}
         />
       </div>
     );
@@ -1021,9 +1233,58 @@ export default function App() {
           word. aria-label keeps the accessible name so screen readers and the
           e2e selectors still find it by "Snapshot".
         */}
+        {/*
+          One control, two segments — editing the labels and showing them are
+          different questions ("let me label parts" vs "keep them out of my way
+          while I arrange the bench"), but they belong to the same thing, so they
+          read as one button with an eye on the end rather than two 図注 buttons
+          competing for the toolbar. The eye is always there — gating it on
+          "this bench already has a label" made the control a different shape in
+          every project, so the one bench that had been labelled looked like the
+          only one that could be.
+        */}
+        <div className="callout-toggle" role="group" aria-label="図注">
+          <button
+            className={calloutMode ? "active" : "ghost"}
+            aria-pressed={calloutMode}
+            onClick={() => {
+              setIsPlacing(false);
+              setPinMode(false);
+              // Entering the mode turns the layer back on: labelling parts you
+              // cannot see is the one state this button must never leave you in.
+              setCalloutMode((v) => {
+                if (!v) setCalloutsVisible(true);
+                return !v;
+              });
+              setSelection([]);
+              setSelectedPinId(null);
+            }}
+            title={calloutMode
+              ? "図注モードを終了（Esc）"
+              : "部品をクリックして図注ラベルを付ける（論文用）"}
+          >
+            図注
+          </button>
+          <button
+            className={calloutsVisible ? "ghost" : "active"}
+            aria-pressed={!calloutsVisible}
+            aria-label="図注ラベルの表示 / 非表示"
+            onClick={() => {
+              setCalloutsVisible((v) => {
+                if (v) { setCalloutMode(false); setSelectedCalloutId(null); }
+                return !v;
+              });
+            }}
+            title={calloutsVisible
+              ? "図注ラベルを隠す（書き出しにも反映）"
+              : "図注ラベルを表示"}
+          >
+            <EyeIcon off={!calloutsVisible} />
+          </button>
+        </div>
         <button
           className="iconbtn ghost"
-          onClick={() => void handleSnapshot()}
+          onClick={() => setFigureExport(figureExport ?? DEFAULT_FIGURE_SETTINGS)}
           disabled={!viewportReady}
           title={t("snapshot")}
           aria-label={t("snapshot")}
@@ -1087,6 +1348,7 @@ export default function App() {
             <Outliner
               components={components}
               groups={groups}
+              beam={data?.beam ?? []}
               selection={selection}
               enteredGroupId={enteredGroupId}
               onSelect={handleSelect}
@@ -1095,10 +1357,20 @@ export default function App() {
               asset={asset}
               onAssetChange={setAsset}
               onAdd={handleStartPlacing}
+              onBrowse={() => setBrowsingParts(true)}
               isPlacing={isPlacing}
             />
           )}
         </aside>
+        {browsingParts && data && (
+          <PartBrowser
+            library={data.library}
+            previews={data.libraryPreviews}
+            asset={asset}
+            onPick={handlePickPart}
+            onClose={() => setBrowsingParts(false)}
+          />
+        )}
         <div className="viewport">
           {data && (
             <Viewport
@@ -1129,7 +1401,6 @@ export default function App() {
               onPlace={isPlacing ? onPlace : undefined}
               onMove={onMove}
               onMoveMany={onMoveMany}
-              onChangeModel={onChangeModel}
               pins={pins}
               pinMode={pinMode}
               selectedPinId={selectedPinId}
@@ -1139,6 +1410,21 @@ export default function App() {
               onEditPin={handleEditPin}
               onMovePin={handleMovePin}
               pinPreview={{ authorName: pinUserName, color: pinColor }}
+              callouts={callouts}
+              anchorStore={anchorStore}
+            />
+          )}
+          {data && callouts.length > 0 && calloutsVisible && (
+            <CalloutLayer
+              callouts={callouts}
+              store={anchorStore}
+              selectedId={selectedCalloutId}
+              showHidden={calloutMode}
+              onSelect={setSelectedCalloutId}
+              onChange={updateCallout}
+              onDelete={deleteCallout}
+              onPickAnchor={(x, y, target) =>
+                viewportRef.current?.pickAnchor(x, y, target) ?? null}
             />
           )}
         </div>
@@ -1169,10 +1455,26 @@ export default function App() {
               board={data?.board ?? null}
               boardModels={data?.boardModels ?? []}
               onChangeBoardModel={onChangeBoardModel}
+              modelOptions={
+                modelOptionsFor(data?.library ?? [], selectedComp?.type ?? "")
+              }
+              onChangeModel={onChangeModel}
             />
           )}
         </aside>
       </div>
+
+      {figureExport && (
+        <FigureExportDialog
+          initial={figureExport}
+          busy={exporting}
+          onExport={(settings) => {
+            setFigureExport(settings);
+            void handleSnapshot(settings);
+          }}
+          onClose={() => setFigureExport(null)}
+        />
+      )}
 
       {pinEditor && (
         <div className="pin-editor-overlay" onMouseDown={() => setPinEditor(null)}>

@@ -1,1 +1,1 @@
-usd-core==24.11
+usd-core==26.8

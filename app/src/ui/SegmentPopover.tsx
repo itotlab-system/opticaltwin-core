@@ -5,6 +5,7 @@ import {
   type SegmentShape,
 } from "../beamShape";
 import SweepSlider from "./SweepSlider";
+import { OVERLAY_CLASS } from "../scene/overlay";
 
 const round = (v: number) => Math.round(v * 10) / 10;
 
@@ -79,7 +80,7 @@ export default function SegmentPopover({
 
   return (
     <div
-      className="segment-popover"
+      className={`segment-popover ${OVERLAY_CLASS}`}
       style={{ transform: `translate(${16 + drag.x}px, calc(-50% + ${drag.y}px))` }}
       onPointerDown={(e) => e.stopPropagation()}
     >

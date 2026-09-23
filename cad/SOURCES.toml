@@ -70,15 +70,309 @@ type = "polarizer"
 target = "Polarizer/LPVISE100-A-Step.step"
 step_url = ""
 
+# Filed under Polarizer, not Lens: the vendor STEP's own directory path reads
+# 7_素子/ポラライザー/18_可視偏光ﾌｨﾙﾀｰ(SPF)/SPF-50C-32 — a visible-range
+# polarizing filter. Ø50 × 6 mm, with a Ø44 recessed optical zone on each face.
+# product_page is left empty: OptoSigma's catalogue refuses automated requests,
+# so the URL could not be confirmed. Paste it in once you have opened the page.
+#
+#   python cad_importer.py cad/Polarizer/SPF-50C-32.stp \
+#       --component-name "Polarizer/SPF-50C-32" --type polarizer --lod both \
+#       --source-forward-axis +Y --source-origin 0 3 0 \
+#       --ignore-step-colors --color 0.6 0.7 0.8 --opacity 0.35 \
+#       --attr clearAperture_mm=44.0
+#
+# The disc lies in the source XZ plane, so its thickness runs along +Y and that
+# is the optical axis. --source-origin puts the origin at the disc's mid-plane
+# rather than on its front face. The STEP carries no face colours, and --color
+# is only consulted once --ignore-step-colors is set, so without that flag the
+# filter renders as untinted near-white instead of LPVISE100-A's pale glass.
+[[parts]]
+part = "SPF-50C-32"
+vendor = "OptoSigma"
+type = "polarizer"
+target = "Polarizer/SPF-50C-32.stp"
+product_page = ""
+step_url = ""
+license_note = """
+OptoSigma publishes CAD on each product page for use in customer designs.
+Check the terms on the page; the same rule applies as for Thorlabs -- download
+the parts you own yourself rather than redistributing the model."""
+
 [[parts]]
 part = "CP20D"
 type = "iris"
 target = "Iris/CP20D-Step.step"
 step_url = ""
 
+#   python cad_importer.py cad/Iris/ID50Z_M-Step.step \
+#       --component-name "Iris/ID50Z_M-Step" --type iris --lod both \
+#       --source-forward-axis +Z --source-origin 0 0 0.25 \
+#       --lo-proxy surface --lo-target-triangles 2000 \
+#       --attr aperture_mm=50 --attr outerDiameter_mm=86.062
+#
+# Zero-aperture iris, Ø50.0 mm max, sold with a TR75/M post already on it -- so
+# unlike the CP20D this CAD is a whole post-mounted assembly, not a bare cage
+# plate. The blades lie in the source XZ plane and their axis is +Z; the post
+# runs down the source -Y, which lands on world -Z once the asset's own
+# rotateX=90 is applied, leaving the iris on the beam with 117 mm of post
+# hanging below it. --source-origin puts the local origin on the blade plane.
+#
+# --lo-proxy surface, not the iris branch's default primitive: that branch
+# builds one cylinder from the oriented bounding box, and the box here is
+# dominated by the post, so the lo iris came out centred 37 mm below the beam.
+[[parts]]
+part = "ID50Z/M"
+type = "iris"
+target = "Iris/ID50Z_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "R1L1S7N"
+type = "target"
+target = "Target/R1L1S7N-Step.step"
+step_url = ""
+# Negative USAF 1951 resolution target, 25.4 x 25.4 x 1.5 mm. This CAD models
+# the chrome chart as a second, near-black solid on the front face.
+
+[[parts]]
+part = "R3L3S1N"
+type = "target"
+target = "Target/R3L3S1N-Step.step"
+step_url = ""
+# Negative USAF 1951 resolution target, 76.2 x 76.2 x 1.524 mm. Unlike the
+# R1L1S7N, this CAD is the bare glass envelope only -- one colour, twelve
+# triangles, no chart geometry. Nothing to recover at import; the pattern
+# would have to be a texture.
+
+[[parts]]
+part = "R1L1S7P"
+type = "target"
+target = "Target/R1L1S7P-Step.step"
+step_url = ""
+# Positive USAF 1951 resolution target. Same 25.4 x 25.4 x 1.5 mm envelope and
+# the same two-solid chart geometry as the R1L1S7N, so it imports with the
+# identical axis, origin and 0.45 glass opacity.
+
+[[parts]]
+part = "MVL7000"
+type = "lens"
+target = "Lens/MVL7000-Step.step"
+step_url = ""
+# 18-108 mm C-mount zoom objective. Imported as a barrel proxy rather than a
+# lens primitive -- it is an objective, not a bare element, so there is no
+# surface to fit. Not currently placed in any project: it was tried as the
+# stand-in for a NAVITAR HR941MC51 and is 173 mm long against the NAVITAR's
+# ~117 mm, which dominated the bench, so a plain DLB-30-50PM stands in instead.
+
+[[parts]]
+part = "MVL12M23"
+type = "lens"
+target = "Lens/MVL12M23-Step.step"
+step_url = ""
+# 12 mm EFL C-mount machine vision objective, 43 mm long. Imported the same way
+# as the MVL7000 -- a barrel proxy, not a lens primitive. Its STEP already lies
+# on its optical axis with the C-mount thread at +X, the end that faces the
+# sensor or the DMD.
+
+[[parts]]
+part = "MVL12M1"
+type = "lens"
+target = "Lens/MVL12M1-Step.step"
+step_url = ""
+# 12 mm EFL C-mount machine vision objective for 1" sensors -- the larger
+# sibling of the MVL12M23, 57 mm long and 44.6 mm across. Same barrel-proxy
+# import and same anodized black. Its STEP sits 40.894 mm off its own origin
+# along the optical axis, so the import recenters it; the C-mount thread is at
+# +X, the end that faces the sensor or the DMD.
+
+#   python cad_importer.py cad/Lens/WPHSM05-532-Step.step \
+#       --component-name "Lens/WPHSM05-532-Step" --type polarizer --lod both \
+#       --source-forward-axis +X --source-roll-deg -90 \
+#       --source-origin -1.41 0 0 \
+#       --attr clearAperture_mm=10.5 --attr diameter_mm=12.7 \
+#       --attr designWavelength_nm=532 \
+#       --ignore-step-colors --color 0.051269 0.051269 0.051269 \
+#       --lo-color 0.051269 0.051269 0.051269
+#
+# Mounted Ø1/2" zero-order half-wave plate for 532 nm: a Ø12.7 mm crystal in an
+# SM05 ring that turns in its housing, Ø17.78 x 10.414 mm overall.
+#
+# Typed `polarizer`, not a type of its own: the tracer has no `waveplate`, and
+# polarizer is the one TRANSMISSIVE_TYPES member that describes an optic which
+# acts on polarization and passes the beam straight through. Retardance is not
+# geometry and is not modelled -- `designWavelength_nm` only records which
+# wavelength the plate is cut for. Filed under Lens/ because that is where its
+# CAD lives, the same rule the CCM1-BS013 follows.
+#
+# --source-origin puts the local origin on the crystal rather than on the ring:
+# the two Ø12.7 faces are at source x = -2.413 and -0.407, so the element sits
+# 1.41 mm behind the housing's own centre. clearAperture_mm = 10.5 is the
+# narrowest bore measured in the CAD (r = 5.25), not a datasheet figure.
+#
+# The STEP has no colours, so without --ignore-step-colors nothing is authored
+# at all and server.py falls back to its pale blue-grey -- the anodised black
+# ring rendered as a light plastic disc. The Ø12.7 crystal does NOT get a glass
+# material: this CAD is a single solid with no colour regions, so there is no
+# separate mesh to make transparent. Splitting one out would mean cutting the
+# geometry by radius, which nothing here does yet.
+[[parts]]
+part = "WPHSM05-532"
+type = "polarizer"
+target = "Lens/WPHSM05-532-Step.step"
+step_url = ""
+
+[[parts]]
+part = "LMR30_M"
+type = "mount"
+target = "Mount/LMR30_M-Step.step"
+step_url = ""
+# Diameter 30 mm lens mount -- the ring the DLB-30-50PM sits in.
+
+#   python cad_importer.py cad/Mount/LMR2_M-Step.step \
+#       --component-name "Mount/LMR2_M-Step" --type mount --lod both \
+#       --source-forward-axis +Z --source-origin -31.16 -32.34 15.01 \
+#       --attr beamApertureRadius_mm=24.13 \
+#       --ignore-step-colors --color 0.051269 0.051269 0.051269 \
+#       --lo-color 0.051269 0.051269 0.051269
+#
+# Ø2" fixed lens mount, the LMR30_M's big brother: a 12.7 mm thick ring with an
+# SM2 bore and a retaining ring, on an M4 tapped base for a Ø12.7 post.
+#
+# The vendor CAD is Y-up (the M4 tap is at source y = -66.76, pointing along
+# -Y), and with --source-forward-axis +Z that source -Y lands on world -Z once
+# the asset's own rotateX=90 is applied -- so no roll here, unlike the Z-up
+# OptoSigma models. The base ends up 34.42 mm below the optical axis.
+# --source-origin is the bore axis at (-31.16, -32.34) on the bore mid-plane
+# z = 15.01; the optic's own thickness is unknown, so the mid-plane is the
+# neutral choice rather than either seat face.
+#
+# Anodised black, like the LMR30_M beside it. Its STEP carries no colours, and
+# `mount` defaults to metalness 0.9 / roughness 0.08, so the uncoloured import
+# rendered as polished chrome.
+[[parts]]
+part = "LMR2_M"
+type = "mount"
+target = "Mount/LMR2_M-Step.step"
+step_url = ""
+
+#   python cad_importer.py cad/Mount/ID25_M-Step.step \
+#       --component-name "Mount/ID25_M-Step" --type iris --lod both \
+#       --source-forward-axis +Z --source-origin 40.44 18.2 3.3 \
+#       --lo-proxy surface --lo-target-triangles 2000 \
+#       --attr aperture_mm=25 --attr outerDiameter_mm=43.74 \
+#       --mesh-color CADMesh_004=0.35,0.36,0.38 \
+#       --mesh-color CADMesh=0.051269,0.051269,0.051269 \
+#       --mesh-opacity CADMesh_004=0.2 \
+#       --lo-color 0.051269 0.051269 0.051269
+#
+# Ø25.0 mm iris diaphragm, post-mounted: like the ID50Z this STEP is a whole
+# assembly, the iris plus the Ø12.7 post it ships on, which leaves 96.47 mm of
+# post hanging below the beam. Typed `iris` although its CAD sits in cad/Mount/
+# -- the folder follows the CAD, the type follows what the part does to light.
+#
+# The blades are the 12 leaves stacked between source z = 3.11 and 3.49, so
+# --source-origin puts the local origin on their mid-plane at z = 3.3, on the
+# aperture axis at (40.44, 18.2). Same --lo-proxy surface as the ID50Z and for
+# the same reason: the iris branch's default primitive builds one cylinder from
+# the oriented bounding box, which the post dominates.
+#
+# The colours are the reason --mesh-color exists. This STEP is one assembly
+# leaf, so --part-color has no name to match; its pieces come out as CADMesh_001
+# ... _006 split by face colour, which rendered the iris grey and brown instead
+# of the anodised matte black of the real part. The broad `CADMesh` rule paints
+# every one of them black; the narrow `CADMesh_004` rule, listed first so the
+# broad one cannot swallow it, keeps the Ø37 disc across the bore a light grey
+# at 0.2 opacity, which Component3D turns into a glass material -- the aperture
+# reads as open and the beam is visible through it. CADMesh_004 is the only
+# mesh that reaches into the bore (its innermost geometry is at r = 6.8; every
+# other piece stops outside r = 15.6).
+#
+# The mesh names come from the order of the colour regions, so they are stable
+# for this STEP with these flags but are not a promise: re-check them if the
+# vendor reissues the model.
+[[parts]]
+part = "ID25/M"
+type = "iris"
+target = "Mount/ID25_M-Step.step"
+step_url = ""
+
+#   python cad_importer.py cad/Mount/RSP1_M-Step.step \
+#       --component-name "Mount/RSP1_M-Step" --type mount --lod both \
+#       --source-forward-axis +Y --source-roll-deg -90 \
+#       --source-origin 0 0 0 \
+#       --lo-proxy surface --lo-target-triangles 9000 \
+#       --ignore-step-colors --color 0.051269 0.051269 0.051269 \
+#       --attr beamApertureRadius_mm=11.45
+#
+# Ø1" continuous rotation mount: an SM1-threaded ring that turns 360 degrees in
+# its housing with a 1-degree vernier, on an M4 tapped base for a Ø12.7 post.
+# The optic it carries here is a polarizer, so the angle read off the vernier is
+# the polarization axis -- but the angle is a number on the part, not geometry,
+# and nothing in the layout depends on it.
+#
+# The CAD is Z-up with its bore along the source +Y (the M4 tap runs down the
+# source -Z from z = -15.37 to the -28.19 base), so it takes the same recipe as
+# the other Z-up vendor models: name the optical axis with
+# --source-forward-axis and roll -90 to put the model's own +Z back on world up.
+# The CAD origin is already on the bore axis at mid-thickness, so
+# --source-origin stays at zero.
+#
+# beamApertureRadius_mm = 11.45 is the Ø22.9 clear aperture, and it is the whole
+# point of this entry: a `mount` with no aperture authored blocks the beam, and
+# the first import of this part stopped the laser dead at the polarizer. The
+# radius is the narrowest cylinder on the bore axis in the CAD (r = 11.455),
+# not the Ø25.4 optic it holds.
+#
+# --lo-proxy surface for the same reason as the KLH-BE-M22H: this is a 32k
+# triangle assembly and the default mount `mesh` proxy came out at 1.1 MB, which
+# ships in every project payload. 8300 triangles (305 kB) still reads as a
+# rotation mount with its vernier scale.
+[[parts]]
+part = "RSP1/M"
+type = "mount"
+target = "Mount/RSP1_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "MLH7_M"
+type = "mount"
+target = "Mount/MLH7_M-Step.step"
+step_url = ""
+# Mini-series fixed lens mount: an internally threaded ø8.89 x 7.62 mm barrel
+# that holds a ø6.35 mm optic with a retaining ring, on an M3 tapped base for
+# ø6 mm mini-series posts. Its optical axis sits 10 mm above that base. The
+# ø5.842 mm through hole is the clear aperture the beam sees.
+
+[[parts]]
+part = "DET100A2"
+type = "detector"
+target = "Detector/DET100A2-Step.step"
+step_url = ""
+# Biased Si detector, 320-1100 nm, 100 mm2 active area behind an SM1 input.
+# The assembly is 106 solids and one of them triangulates to nothing, which is
+# why cad_importer skips unmeshable regions rather than aborting the import.
+
 # ---------------------------------------------------------------------------
 # Sources and displays
 # ---------------------------------------------------------------------------
+[[parts]]
+part = "LEDW7E"
+type = "led"
+target = "LED/LEDW7E-Step.step"
+step_url = ""
+# Unmounted white LED. Broadband, so it authors optics:wavelength_nm = 0 and
+# the client draws its beam white rather than picking a colour off a line.
+
+[[parts]]
+part = "S440C"
+type = "slm"
+target = "SLM/S440C-Step.step"
+step_url = ""
+# Standing in for a VIALUX V-7000 VIS DMD head, which has no published CAD.
+# The web drawing is a populated board of roughly the right footprint; the
+# modulating plane is authored on its front face.
+
 [[parts]]
 part = "NPL52B"
 type = "laser"
@@ -102,6 +396,179 @@ part = "EXULUS-HD2HP"
 type = "slm"
 target = "SLM/EXULUS-HD2HP-Step.step"
 step_url = ""
+
+#   python cad_importer.py cad/SLM/EXULUS-SE1-Step.step \
+#       --component-name "SLM/EXULUS-SE1-Step" --type slm --lod both \
+#       --source-forward-axis +Z --source-origin -39.3 9.7 -48.5 \
+#       --preserve-step-parts \
+#       --color 0.051269 0.051269 0.051269 \
+#       --part-color EEC4011_housing=0.62,0.09,0.10 \
+#       --part-color RDP551F_MODULE=0.32,0.34,0.37 \
+#       --attr reflective=true \
+#       --attr activeWidth_mm=7.0 --attr activeHeight_mm=13.0 \
+#       --attr screenWidth_mm=7.0 --attr screenHeight_mm=13.0 \
+#       --attr screenThickness_mm=0.7
+#
+# The LCOS module sits at the -Z end of the STEP and every one of its optical
+# faces points -Z, so the beam arrives along +Z: that maps onto the optical +X,
+# leaving the housing behind the panel exactly as EXULUS-HD2HP has it.
+# --source-origin puts the local origin on the active surface, which is what the
+# slm branch of the importer assumes.
+#
+# **The 13.0 x 7.0 mm active area is measured off the CAD**, from the innermost
+# rectangle of the module's optical stack (its centre lands on the housing axis
+# to within 0.04 mm, which is what makes it believable). It is not a datasheet
+# number — check it against the EXULUS-SE1 spec before trusting the drawn beam
+# footprint. Without these attrs the importer falls back to *half the envelope*,
+# which is how this part first came in with a 17.98 x 24.33 mm "screen".
+#
+# The STEP carries no face colours at all, so every part of it first rendered
+# as the near-white default. --preserve-step-parts keeps the assembly's leaves
+# as named Xforms, and --part-color then paints the real thing: a red anodised
+# extrusion between black end caps, with the LCOS module a lighter grey so the
+# screen reads through the aperture. 0.051269 is the black anodised grey used
+# across the catalogue, and the module grey is the same value write_lo_proxy
+# gives the lo Display panel, so the two levels of detail agree.
+#
+# The module is one CAD leaf -- board, screen and mounting tabs together -- and
+# those tabs stand ~10 mm proud of the housing on both sides, so it is painted
+# panel grey rather than a bright screen white that would light them up too.
+[[parts]]
+part = "EXULUS-SE1"
+type = "slm"
+target = "SLM/EXULUS-SE1-Step.step"
+step_url = ""
+
+# ---------------------------------------------------------------------------
+# Beam expanders
+# ---------------------------------------------------------------------------
+#   python cad_importer.py cad/Expander/LBED-10.stp \
+#       --component-name "Expander/LBED-10" --type lens --lod both \
+#       "--source-forward-axis=-Y" --source-roll-deg 90 \
+#       --source-origin 0 -57.75 0 --lo-proxy cylinder \
+#       --ignore-step-colors --color 0.051269 0.051269 0.051269 \
+#       --attr magnification=10 --attr barrelDiameter_mm=41.386
+#
+# ×10 laser beam expander with diopter (focus) adjustment. Filed as `lens` and
+# imported as a barrel proxy, the same treatment as the MVL objectives: it is a
+# telescope, not a bare element, so there is no surface to fit. Beam expansion
+# itself is not modelled -- draw it with the beam editor's expand preset if you
+# want the downstream leg to widen.
+#
+# Light enters the M22 threaded end (source y ≈ 0, entrance bore Ø16) and
+# leaves the far end 116 mm away (exit bore Ø27), so the optical axis is the
+# source -Y. --source-roll-deg 90 turns the side lock screw from pointing
+# straight down to sideways; nothing else about a tube depends on the roll.
+# --source-origin centres it on its own length.
+#
+# The STEP carries no face colours at all, so without --ignore-step-colors it
+# renders as the near-white default; the real body is black anodised, which is
+# what 0.051269 is across this catalogue.
+#
+# NOTE: the leading "=" in "--source-forward-axis=-Y" is required. Written with
+# a space, argparse reads "-Y" as a flag and the import fails.
+[[parts]]
+part = "LBED-10"
+vendor = "OptoSigma"
+type = "lens"
+target = "Expander/LBED-10.stp"
+product_page = "https://jp.optosigma.com/en_jp/lbed-10.html"
+step_url = ""
+license_note = """
+OptoSigma publishes CAD on each product page for use in customer designs.
+Check the terms on the page; the same rule applies as for Thorlabs -- download
+the parts you own yourself rather than redistributing the model."""
+
+#   python cad_importer.py cad/Holder/KLH-BE-M22H.stp \
+#       --component-name "Holder/KLH-BE-M22H" --type mount --lod both \
+#       --source-forward-axis +Y --source-roll-deg -90 \
+#       --source-origin 0 -3.2245 0 \
+#       --lo-proxy surface --lo-target-triangles 9000 \
+#       --ignore-step-colors --color 0.051269 0.051269 0.051269 \
+#       --attr beamApertureRadius_mm=10.65
+#
+# The four-axis kinematic holder the LBED-10 screws into (tip, tilt and
+# centring, with locks). Its CAD is already Z-up with the base 35.9 mm below
+# the bore, so the recipe is the general one for a Z-up vendor model: name the
+# optical axis with --source-forward-axis and roll -90 to put the model's own
+# +Z back on world up.
+#
+# --type mount, not holder: `holder` in this repository means a post holder,
+# and it carries a forced rotation plus bottom-centering that would stand this
+# part on end. `mount` is structural to the tracer either way, but a mount
+# without optics:beamApertureRadius_mm blocks the beam -- 10.65 mm is the M22
+# thread's own bore, measured off the CAD.
+#
+# --lo-proxy surface because the default mount `mesh` proxy is a 1.8 MB lo for
+# this one, and every lo asset ships in the project payload. 9000 triangles
+# (310 kB) still reads as a kinematic mount with its knobs; 2500 was a blob.
+[[parts]]
+part = "KLH-BE-M22H"
+vendor = "OptoSigma"
+type = "mount"
+target = "Holder/KLH-BE-M22H.stp"
+product_page = "https://jp.optosigma.com/en_jp/klh-be-m22h.html"
+step_url = ""
+license_note = """
+OptoSigma publishes CAD on each product page for use in customer designs.
+Check the terms on the page; the same rule applies as for Thorlabs -- download
+the parts you own yourself rather than redistributing the model."""
+
+# ---------------------------------------------------------------------------
+# Filter and polarizer holders
+# ---------------------------------------------------------------------------
+#   python cad_importer.py cad/Holder/NDHN-50.stp \
+#       --component-name "Holder/NDHN-50" --type mount --lod both \
+#       --source-forward-axis +Y --source-roll-deg -90 \
+#       --source-origin 0 -18.7 69 \
+#       --preserve-step-shells \
+#       --ignore-step-colors --color 0.051269 0.051269 0.051269 \
+#       --attr beamApertureRadius_mm=10.0
+#
+# Rotating holder for a Ø50 reflective variable-ND filter (VND-50/VND-50U); the
+# filter turns 360° continuously and clamps where you leave it. Same Z-up
+# recipe as the KLH-BE-M22H, but the bore sits 69 mm up the Ø12 post rather
+# than at the CAD origin, so --source-origin carries that height as well as the
+# filter plane at source y = -18.7. The post then hangs 69 mm below the beam.
+#
+# beamApertureRadius_mm = 10.0 is the Ø20 bore behind the filter ring, the
+# narrowest metal the beam sees. The variable density is not modelled -- this
+# is a layout tool, and the ND value is not geometry.
+[[parts]]
+part = "NDHN-50"
+vendor = "OptoSigma"
+type = "mount"
+target = "Holder/NDHN-50.stp"
+product_page = "https://jp.optosigma.com/ja_jp/ndhn-50.html"
+step_url = ""
+license_note = """
+OptoSigma publishes CAD on each product page for use in customer designs.
+Check the terms on the page; the same rule applies as for Thorlabs -- download
+the parts you own yourself rather than redistributing the model."""
+
+#   python cad_importer.py cad/Holder/PH-50-ARS.stp \
+#       --component-name "Holder/PH-50-ARS" --type mount --lod both \
+#       --source-forward-axis +X --source-roll-deg -90 \
+#       --source-origin -2.0505 0 0 \
+#       --ignore-step-colors --color 0.051269 0.051269 0.051269 \
+#       --attr beamApertureRadius_mm=23.0
+#
+# Polarizer holder: a Ø50 optic in a ring that rotates 360° about the optical
+# axis, with a movable scale plate for reading off the polarization axis. Its
+# CAD is the one vendor model here that already points down our own +X, so only
+# the roll is needed to put its +Z back on world up; the Ø12 post then hangs
+# 100 mm below the beam. beamApertureRadius_mm = 23.0 is the Ø46 clear bore.
+[[parts]]
+part = "PH-50-ARS"
+vendor = "OptoSigma"
+type = "mount"
+target = "Holder/PH-50-ARS.stp"
+product_page = "https://jp.optosigma.com/ja_jp/ph-50-ars.html"
+step_url = ""
+license_note = """
+OptoSigma publishes CAD on each product page for use in customer designs.
+Check the terms on the page; the same rule applies as for Thorlabs -- download
+the parts you own yourself rather than redistributing the model."""
 
 # ---------------------------------------------------------------------------
 # Breadboards
@@ -133,6 +600,72 @@ step_url = ""
 # ---------------------------------------------------------------------------
 # Cage system
 # ---------------------------------------------------------------------------
+#   python cad_importer.py cad/Cage/CCM1-BS013_M-Step.step \
+#       --component-name "Cage/CCM1-BS013_M-Step" --type beamsplitter \
+#       --lod both --source-forward-axis +X --source-origin 0 0 0 \
+#       --preserve-step-solids \
+#       --ignore-step-colors --color 0.051269 0.051269 0.051269 \
+#       --attr splitRatio=0.5 --attr diameter_mm=25.4 --attr size_mm=38.1
+#
+# 50:50 non-polarizing beamsplitter, 400-700 nm, already mounted in a CM1 cage
+# cube. Filed under Cage because that is where its CAD lives, but typed
+# `beamsplitter`: `cage` is structural to the tracer and the beam would fly
+# straight through instead of splitting.
+#
+# This is the one import in the catalogue where the roll is forced by physics
+# rather than by which way is up. beam_tracer builds the splitting interface as
+# normalise(x_axis + y_axis) -- always 45 degrees in the horizontal plane, so
+# the deflected arm leaves along local -Y. The CAD's own interface is the plane
+# |n| = (0.707, 0, 0.707) through the origin, i.e. 45 degrees in its XZ plane,
+# and world XY maps to authored X/-Z. So +X with **no roll** is the only
+# setting that puts the two Ø25.7 ports on world X and world Y. Rolling it 90
+# degrees to make the engraved label face sideways would tip the split into the
+# vertical plane and send the reflected arm at the ceiling.
+[[parts]]
+part = "CCM1-BS013/M"
+type = "beamsplitter"
+target = "Cage/CCM1-BS013_M-Step.step"
+step_url = ""
+
+#   python cad_importer.py cad/Cage/SI254-Step.step \
+#       --component-name "Cage/SI254-Step" --type detector --lod both \
+#       --source-forward-axis +X --source-roll-deg -90 \
+#       --source-origin -1.69 19.15 24.13 \
+#       --preserve-step-solids \
+#       --ignore-step-colors --color 0.051269 0.051269 0.051269 \
+#       --attr width_mm=25.4 --attr height_mm=25.4 \
+#       --attr shearPlateBeam_mm=25.4 --attr beamBehavior=split \
+#       --attr splitRatio=0.5 --attr splitPlaneRadius_mm=19 \
+#       --attr splitPlaneCenterX_mm=2.5260353 \
+#       --attr splitPlaneCenterY_mm=0.0014918491 \
+#       --attr splitPlaneCenterZ_mm=-2.130911 \
+#       --attr splitPlaneNormalX=1 --attr splitPlaneNormalY=0 \
+#       --attr splitPlaneNormalZ=-1 --attr blockPlaneRadius_mm=12.7 \
+#       --attr blockPlaneCenterX_mm=-0.0001568844 \
+#       --attr blockPlaneCenterY_mm=0 --attr blockPlaneCenterZ_mm=22.021904 \
+#       --attr blockPlaneNormalX=0 --attr blockPlaneNormalY=0 \
+#       --attr blockPlaneNormalZ=1
+#
+# NOT a cage part despite the folder: SI254 is a shearing interferometer, the
+# collimation check you drop into a 10-25.4 mm beam. Its CAD is a 50.8 mm wide
+# instrument standing on the bench, with a Ø25.4 input port, a Ø40 wedged shear
+# plate at 45 degrees in the horizontal plane, and the ground-glass screen on
+# the +Y side where the fringes appear.
+#
+# Kept in the detector palette, but the authored split-plane attributes make
+# the Ø38 CADMesh_003 shear plate the optical hit surface. A centered +X beam
+# splits equally into a straight arm and a +Z arm. The +Z arm stops when it
+# reaches the near face of CADMesh_005; a ray missing the plate is still
+# blocked by the detector housing.
+#
+# The split-plane center is the CAD solid centroid after the asset's authored
+# rotateX=180 model correction. Its (1,0,-1) normal turns +X into +Z.
+[[parts]]
+part = "SI254"
+type = "detector"
+target = "Cage/SI254-Step.step"
+step_url = ""
+
 [[parts]]
 part = "CM1-DCH_M"
 type = "cage"
@@ -355,10 +888,79 @@ step_url = ""
 # Any camera-shaped mesh works: the layout only needs the sensor plane and the
 # body envelope. Substituting a self-made block model is the safe default.
 [[parts]]
+part = "DLB-30-50PM"
+vendor = "OptoSigma"
+type = "lens"
+target = "Lens/DLB-30-50PM.stp"
+product_page = "https://jp.optosigma.com/ja_jp/dlb-30-50pm.html"
+step_url = ""
+license_note = """
+OptoSigma publishes CAD on each product page for use in customer designs.
+Check the terms on the page; the same rule applies as for Thorlabs -- download
+the parts you own yourself rather than redistributing the model."""
+# Biconvex, diameter 30 mm, f = 50 mm, 14 mm centre thickness. AUTO reads the
+# widest axis as the optical one, so this one has to declare +Y by hand.
+
+[[parts]]
 part = "Sony A7 III + FE 28-70"
 vendor = "Sony (provenance unconfirmed)"
 type = "camera"
 target = "Camera/A7 III + FE 28-70 v4.step"
+product_page = ""
+step_url = ""
+license_note = "Provenance unconfirmed. Do not publish a link until it is established."
+
+#   python cad_importer.py \
+#       "cad/Camera/205-16-10_Cam.44x29_USB3.1C_CS-FP_13,3_ER-6,7.stp" \
+#       --component-name "Camera/Cam-44x29-CS-205-16-10" --type camera \
+#       --lod both --source-forward-axis +Z --source-origin 0 0 13.3 \
+#       --color 0.051269 0.051269 0.051269 --preserve-step-parts \
+#       --part-color USB3_1C=0.013,0.195,0.451 \
+#       --lo-color 0.013 0.195 0.451
+#
+# The catalogue folder leads with "Cam", not with the "205-16-10" of the file
+# name, and it has to: server.py's /add derives the USD prim name from the
+# folder and only replaces illegal characters, so a folder starting with a
+# digit yields the ill-formed path </Setup/205_16_10_...> and the part cannot
+# be placed at all. Keep any new component folder starting with a letter.
+#
+# A 44 x 29 mm machine-vision camera: CS mount at the front, USB 3.1 Type-C at
+# the back, four M3 screws and a tripod adapter underneath. The vendor is NOT
+# identified -- "205-16-10" matches no catalogue this search could find, and
+# the file name is the only documentation there is. Establish who makes it
+# before publishing a link, exactly as for the A7 III above.
+#
+# Everything the import needs is in the file name and the CAD. The optical axis
+# is the source +Z (the CS threads are coaxial with it at x = y = 0) and the
+# tripod adapter is at source -Y, which becomes world down; no roll is needed.
+# --source-origin 0 0 13.3 reads "CS-FP 13,3" as the focal plane 13.3 mm behind
+# the mount flange face, which the CAD puts at z = 0. That is 0.8 mm past the
+# nominal CS flange distance of 12.526 mm -- the size of a cover-glass
+# correction, so it is believable, but it is inferred from a file name and not
+# from a datasheet. Check it before trusting the drawn beam to end on the
+# sensor.
+#
+# The sensor's own size is unknown, so no sensorWidth_mm/sensorHeight_mm is
+# authored and the tracer falls back to the body cross-section, as it already
+# does for the A7 III.
+#
+# The STEP carries no colours at all, so every shade here is authored. The real
+# camera on the bench has a blue housing with black ends, which is what the
+# --part-color rule paints: the body leaf (matched on "USB3_1C") gets the blue,
+# and --color leaves the tripod adapter and the four M3 screws black. The
+# values are linear, converted from about sRGB #1E7AB3 sampled off a photo of
+# the part -- close enough to recognise it on a crowded bench, not a documented
+# finish. The whole housing takes the blue because the CAD is one solid: its
+# black front and rear plates are not separate leaves, so there is nothing for
+# a rule to match. Colour needs --preserve-step-parts, which is why this import
+# no longer passes --ignore-step-colors (the two are mutually exclusive, and
+# that flag's flatten-to-one-mesh branch discards the leaf names). lo is a
+# single bounding primitive with no leaves at all, hence --lo-color.
+[[parts]]
+part = "205-16-10 (44x29 CS-mount USB3.1 camera)"
+vendor = "unidentified"
+type = "camera"
+target = "Camera/205-16-10_Cam.44x29_USB3.1C_CS-FP_13,3_ER-6,7.stp"
 product_page = ""
 step_url = ""
 license_note = "Provenance unconfirmed. Do not publish a link until it is established."

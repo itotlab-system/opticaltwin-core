@@ -15,7 +15,33 @@ resolves to the latest release, so a citation of it stays valid.
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-09-23
+
 ### Added
+
+- **Figure callouts and export.** A callout mode turns a bench into a paper
+  figure: click a part and it gets a label box on a leader line, like the
+  annotated setup photos in a methods section. The text is free and starts as the
+  part's type. Labels can be dragged, re-aimed at a point on the part, coloured
+  from a small palette, and hidden one by one or all at once. The figure exports
+  as **PNG, PDF or SVG** at 1–4× resolution, on the viewport, white or a
+  transparent background. SVG keeps the labels as real text so they can be
+  retyped in a vector editor; the PDF is lossless. Callouts are annotation only
+  and move no component.
+- **Visual part browser.** Parts are picked from a full-screen catalogue with a
+  category list, search across model number, type and specs, and a picture of
+  every part rendered from its own CAD. A real photograph placed next to an asset
+  as `preview.png` is used instead.
+- **Project gallery.** Cards show a thumbnail of the bench, when it was last
+  edited and the board size, and collect their actions in a keyboard-accessible
+  "⋯" menu. Projects can be renamed from their card, filed into folders and
+  archived out of the way. Folder and archive state live in a small
+  `project.json` beside the scene, not in the scene itself.
+- **Outliner in beam order.** Components are listed in the order the beam
+  reaches them.
+- **USAF 1951 resolution target**, drawn on both faces of a target component.
+- **Per-mesh colours in CAD import**, so a multi-body STEP part can carry its
+  real colours.
 
 - **Beam-segment editing in the 3D viewport.** Beam legs are selectable objects.
   Clicking a leg opens an editor beside it that sets the drawn length and the
@@ -36,7 +62,7 @@ resolves to the latest release, so a citation of it stays valid.
   shared between users, and in memory only — it is lost on server restart.
 - **Laser on/off** per laser source, from the toolbar.
 - **Viewport background** — dark, gray and light, chosen independently of the UI
-  theme. The mid gray exists for visibility: black anodized mounts vanish against
+  theme and remembered per project. The mid gray exists for visibility: black anodized mounts vanish against
   near-black and silver optics wash out against near-white.
 - `cad/SOURCES.toml` and `tools/fetch_cad.py` — a manifest of the manufacturer
   CAD parts the component library was built from, with a script to fetch the ones
@@ -46,8 +72,21 @@ resolves to the latest release, so a citation of it stays valid.
 - Continuous integration on pull requests: Python tests and a frontend
   type-check and build.
 
+### Changed
+
+- **A new part lands on the board.** It used to be placed at its optical centre,
+  which buried the lower half of every lens and mirror in the breadboard.
+- **Moving a part no longer re-sends the whole scene.** A move returns only
+  transforms and the retraced beam: 7 kB in 70 ms on a 37-part bench, where it
+  had been up to 50 MB and 18 s at high level of detail.
+- The part catalogue opens faster and remembers its size.
+- The model-number picker moved from the bench into the Inspector.
+- The beam editor closes when you click away from it.
+- The login screen follows the application's design.
+
 ### Fixed
 
+- Placement clamping works on a board whose bounding box is empty.
 - Sensors block the beam on their housing as well as their active area. Testing
   only the sensor plane let light pass through a camera turned side-on, because
   an edge-on plane makes the intersection test degenerate.
@@ -91,5 +130,6 @@ Initial public release.
 - **glTF export** (`usd_to_web.py`) and a static, view-only viewer.
 - Shared-password access control via `OT_PASSWORD`, for use on a trusted LAN.
 
-[Unreleased]: https://github.com/itotlab-system/opticaltwin-core/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/itotlab-system/opticaltwin-core/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/itotlab-system/opticaltwin-core/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/itotlab-system/opticaltwin-core/releases/tag/v1.0.0

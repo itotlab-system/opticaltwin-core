@@ -16,8 +16,12 @@ function formatTimestamp(d: Date): string {
   return `${date}_${time}`;
 }
 
-export function buildSnapshotFilename(projectName: string, d: Date = new Date()): string {
-  return `${sanitizeProjectName(projectName)}-${formatTimestamp(d)}.png`;
+export function buildSnapshotFilename(
+  projectName: string,
+  d: Date = new Date(),
+  extension: string = "png",
+): string {
+  return `${sanitizeProjectName(projectName)}-${formatTimestamp(d)}.${extension}`;
 }
 
 export function downloadBlob(blob: Blob, filename: string): void {

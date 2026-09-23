@@ -7,6 +7,7 @@ import type {
   ComponentUpdate,
 } from "../types";
 import { useSettings } from "../settings";
+import { modelLabel } from "../modelPicker";
 import { colorFor } from "./typeColor";
 import GroupInspector from "./GroupInspector";
 
@@ -26,7 +27,7 @@ const oneDecimal = (value: number) => Math.round(value * 10) / 10;
 export default function Inspector({
   component, prev, onEdit, onDelete, onDuplicate, beamPath, onPinBeamNode, footer,
   selection, group, components, onNudge, onCreateGroup, onUngroup, onRenameGroup,
-  board, boardModels, onChangeBoardModel,
+  board, boardModels, onChangeBoardModel, modelOptions, onChangeModel,
 }: {
   component: Component | null;
   prev: Component | null;
@@ -46,6 +47,9 @@ export default function Inspector({
   board: Board | null;
   boardModels: string[];
   onChangeBoardModel: (asset: string) => void;
+  /** Assets the selected part may be swapped to — empty unless holder/post. */
+  modelOptions: string[];
+  onChangeModel: (asset: string) => void;
 }) {
   const { t } = useSettings();
 
@@ -118,6 +122,25 @@ export default function Inspector({
           <span className="ty">{component.type}</span>
         </div>
       </div>
+      {/* Swappable model, for the parts that have one (holders, posts). It used
+          to float over the bench in 3D on every selection; here it stays in one
+          predictable place and covers nothing. */}
+      {modelOptions.length > 0 && (
+        <div className="fieldgrid">
+          <div className="field model-field">
+            <label htmlFor="model-picker">{t("model_number")}</label>
+            <select
+              id="model-picker"
+              value={component.asset ?? ""}
+              onChange={(event) => onChangeModel(event.target.value)}
+            >
+              {modelOptions.map((asset) => (
+                <option key={asset} value={asset}>{modelLabel(asset)}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
       <div className="fieldgrid">
         {AXES.map(({ k, tkey, step }) => (
           <div className="field" key={k}>

@@ -16,6 +16,8 @@ const PICK_R = 7;
 
 // Wavelength (nm) → saturated hex color. UV/IR use false-color so they stay visible.
 function wavelengthToColor(nm: number): string {
+  // A broadband source (a white LED) has no single wavelength, and authors 0.
+  if (!(nm > 0)) return "#fff4d6";
   if (nm < 400) return "#cc00ff";
   if (nm < 450) return "#6600ff";
   if (nm < 495) return "#0088ff";
@@ -196,6 +198,10 @@ export default function Beam({
             e.stopPropagation();
             onSelect(seg);
           }}
+          // The click that follows must stop here as well: a leg usually runs
+          // in front of a mount, and letting the click through would select
+          // that part — which now closes the editor we just opened.
+          onClick={(e) => e.stopPropagation()}
         >
           <cylinderGeometry args={[PICK_R, PICK_R, height, 8, 1, true]} />
           <meshBasicMaterial visible={false} side={THREE.DoubleSide} />

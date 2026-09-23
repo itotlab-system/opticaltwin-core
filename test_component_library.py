@@ -72,7 +72,9 @@ class NestedComponentLibraryTests(unittest.TestCase):
                 "--type", "rod",
                 "--lod", "both",
                 "--component-name", "Rod/ER1-Step",
-                "--source-forward-axis", "+Y",
+                # One element, not two: a "-Z" axis passed separately is read
+                # by argparse as an unknown option rather than as a value.
+                "--source-forward-axis=+Y",
             ])
 
     def test_asset_rotation_is_not_returned_as_placement_rotation(self):

@@ -8,6 +8,10 @@ debug.py
 # Windows/WSL alternate data streams
 *:Zone.Identifier
 
+# Windows Explorer thumbnail caches, which ride along in submitted photo folders
+Thumbs.db
+Thumbs.db:encryptable
+
 # Office temp/lock files
 ~$*
 
