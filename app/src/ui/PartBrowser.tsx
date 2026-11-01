@@ -93,7 +93,13 @@ export default function PartBrowser({
   asset,
   onPick,
   onClose,
+  title,
+  initialCategory,
 }: {
+  /** Heading; defaults to "Add a part". */
+  title?: string;
+  /** Open on this category (e.g. "Laser") instead of the whole catalogue. */
+  initialCategory?: string;
   library: string[];
   previews?: Record<string, Component>;
   asset: string;
@@ -105,7 +111,7 @@ export default function PartBrowser({
   const [query, setQuery] = useState("");
   // Opens on the whole catalogue, not on the current asset's category: the
   // reason to open this is that you don't yet know which category to look in.
-  const [category, setCategory] = useState<string>(ALL);
+  const [category, setCategory] = useState<string>(initialCategory ?? ALL);
   const searchRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   // Read once, at mount: applied as an inline style so the CSS default stands
@@ -238,7 +244,7 @@ export default function PartBrowser({
         style={size ? { width: size.w, height: size.h } : undefined}
       >
         <header className="part-browser-head">
-          <h2>{t("browse_parts")}</h2>
+          <h2>{title ?? t("browse_parts")}</h2>
           <input
             ref={searchRef}
             className="part-search"

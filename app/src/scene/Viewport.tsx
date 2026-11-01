@@ -26,6 +26,9 @@ import CalloutAnchors from "./CalloutAnchors";
 import type { AnchorStore } from "./anchors";
 import { fromOverlay } from "./overlay";
 import { groupPivot, rigidTransform } from "../groups";
+import { snapPlacement } from "../beamFirst";
+import type { Turn } from "../beamFirst";
+import FoldArrows from "./FoldArrows";
 import type { TransformDelta } from "../groups";
 
 const DEG = Math.PI / 180;
@@ -38,6 +41,9 @@ const ROD_MOUNT_EXACT_TOLERANCE_MM = 0.25;
 const ROD_MOUNT_ANGLE_TOLERANCE_DEG = 3;
 const ROD_ALIGNMENT_HALF_LENGTH_MM = 60;
 const CARDINAL_ROTATION_SNAP_DEG = 5;
+// Rotation snaps to eighth turns, not quarter turns: 45° is the angle that
+// folds a beam, and turning a mirror to it by eye was the step users missed.
+const ROTATION_SNAP_STEP_DEG = 45;
 // Components may be lifted above the board but not sunk into it; the ceiling is
 // a sanity bound so a runaway drag can't push a part out of the scene.
 const Z_MAX_MM = 300;
@@ -74,7 +80,7 @@ function cameraPlaneBasis(camera: THREE.Camera | null) {
   return { right, forward };
 }
 
-/** Snap to quarter turns only inside the magnetic ±5° tolerance. */
+/** Snap to 45° steps only inside the magnetic ±5° tolerance. */
 type RotationAxis = "X" | "Y" | "Z";
 
 function rotationAxis(axis: string): RotationAxis | null {
@@ -83,9 +89,9 @@ function rotationAxis(axis: string): RotationAxis | null {
 
 function snapCardinalAngle(angleRad: number): number | null {
   const angleDeg = angleRad / DEG;
-  const nearestQuarterTurn = Math.round(angleDeg / 90) * 90;
-  return Math.abs(angleDeg - nearestQuarterTurn) <= CARDINAL_ROTATION_SNAP_DEG
-    ? nearestQuarterTurn * DEG
+  const nearest = Math.round(angleDeg / ROTATION_SNAP_STEP_DEG) * ROTATION_SNAP_STEP_DEG;
+  return Math.abs(angleDeg - nearest) <= CARDINAL_ROTATION_SNAP_DEG
+    ? nearest * DEG
     : null;
 }
 
@@ -105,6 +111,10 @@ function snapActiveRotation(object: THREE.Object3D, axis: RotationAxis | null) {
 // Library asset names describe catalogue variants, while Component3D renders
 // the optics:type stored inside each USD asset. Keep that distinction here so
 // e.g. lens_collimating.usda previews as a lens instead of the fallback cube.
+function rayOf(ray: THREE.Ray) {
+  return { origin: ray.origin.toArray(), direction: ray.direction.toArray() };
+}
+
 function componentTypeFromAsset(asset: string): string {
   const name = asset.replace(/\.usda$/i, "").toLowerCase();
   if (name.startsWith("rod/")) return "mount";
@@ -1132,7 +1142,10 @@ const Viewport = forwardRef<ViewportHandle, {
   ) => void;
   // Rigid move of the whole selection, saved in a single request.
   onMoveMany: (updates: ComponentUpdate[]) => void;
-  onPlace?: (point: THREE.Vector3) => void;
+  /** `snap` false = Alt was held: put it exactly where clicked, not in the beam. */
+  onPlace?: (point: THREE.Vector3, snap: boolean) => void;
+  /** Turn a selected mirror / beamsplitter so the beam leaves to that side. */
+  onFold?: (name: string, turn: Turn) => void;
   /** Beam leg being edited, and the editor anchored beside it in 3D. */
   selectedSegmentKey?: string | null;
   onSelectSegment?: (seg: BeamSegment | null) => void;
@@ -1175,7 +1188,7 @@ const Viewport = forwardRef<ViewportHandle, {
 }>(function Viewport({
   components, beam, board, selection, groups, enteredGroupId,
   isPlacing, placingAsset, libraryPreviews, library, transformMode,
-  onSelect, onDrillIn, onMove, onMoveMany, onPlace,
+  onSelect, onDrillIn, onMove, onMoveMany, onPlace, onFold,
   selectedSegmentKey = null, onSelectSegment, beamEditor,
   pins = [],
   pinMode = false,
@@ -1231,6 +1244,20 @@ const Viewport = forwardRef<ViewportHandle, {
   const [selectedPinRef, setSelectedPinRef] = useState<THREE.Group | null>(null);
   const pinRefs = useRef<Record<string, THREE.Group | null>>({});
   const [previewPoint, setPreviewPoint] = useState<THREE.Vector3 | null>(null);
+  const [previewRay, setPreviewRay] = useState<THREE.Ray | null>(null);
+  // Alt held while placing = drop it beside the beam on purpose, no snap.
+  const [freePlace, setFreePlace] = useState(false);
+  useEffect(() => {
+    if (!isPlacing) return;
+    const track = (e: KeyboardEvent) => setFreePlace(e.altKey);
+    window.addEventListener("keydown", track);
+    window.addEventListener("keyup", track);
+    return () => {
+      window.removeEventListener("keydown", track);
+      window.removeEventListener("keyup", track);
+      setFreePlace(false);
+    };
+  }, [isPlacing]);
   const [pinPreviewPoint, setPinPreviewPoint] = useState<THREE.Vector3 | null>(null);
   // The axis triad is editor furniture, not part of the setup, so it is hidden
   // for the duration of a snapshot (#154). Hidden rather than unmounted:
@@ -1591,7 +1618,8 @@ const Viewport = forwardRef<ViewportHandle, {
     return nearest?.z ?? null;
   };
 
-  const handlePreviewMove = (point: THREE.Vector3 | null) => {
+  const handlePreviewMove = (point: THREE.Vector3 | null, ray?: THREE.Ray) => {
+    setPreviewRay(ray ? ray.clone() : null);
     if (!point) {
       setPreviewPoint(null);
       setSmartGuideX(null);
@@ -1609,14 +1637,33 @@ const Viewport = forwardRef<ViewportHandle, {
     setSmartGuideY(guideY);
   };
 
-  const handlePlace = (point: THREE.Vector3) => {
+  const handlePlace = (point: THREE.Vector3, ray: THREE.Ray) => {
     const guideX = nearestGuideX(point.x);
     const guideY = nearestGuideY(point.y);
     const placement = point.clone();
     if (guideX !== null) placement.x = guideX;
     if (guideY !== null) placement.y = guideY;
-    onPlace?.(placement);
+    const snap = !freePlace && placingAsset
+      ? snapPlacement(
+        { type: placingType, attrs: libraryPreviews?.[placingAsset]?.attrs ?? {} },
+        beam, placement.x, placement.y, rayOf(ray),
+      )
+      : null;
+    if (snap) { placement.x = snap.beamX; placement.y = snap.beamY; }
+    onPlace?.(placement, !freePlace);
   };
+
+  // Where the part being placed will actually land: in the beam when it is an
+  // in-beam part dropped near one (the server snaps it the same way).
+  const placingType = placingAsset
+    ? libraryPreviews?.[placingAsset]?.type ?? componentTypeFromAsset(placingAsset)
+    : "";
+  const placingSnap = isPlacing && placingAsset && previewPoint && !freePlace
+    ? snapPlacement(
+      { type: placingType, attrs: libraryPreviews?.[placingAsset]?.attrs ?? {} },
+      beam, previewPoint.x, previewPoint.y, previewRay ? rayOf(previewRay) : undefined,
+    )
+    : null;
 
   const handleTransformChange = () => {
     if (!selectedRef || !selected) return;
@@ -1975,17 +2022,16 @@ const Viewport = forwardRef<ViewportHandle, {
           c={{
             ...(libraryPreviews?.[placingAsset] ?? {}),
             name: "Placement preview",
-            type: libraryPreviews?.[placingAsset]?.type
-              ?? componentTypeFromAsset(placingAsset),
-            x: previewPoint.x,
-            y: previewPoint.y,
+            type: placingType,
+            x: placingSnap?.x ?? previewPoint.x,
+            y: placingSnap?.y ?? previewPoint.y,
             // Same drop height the server will author, so the ghost stands
             // where the part lands instead of sunk into the board.
-            z: (board.bbox?.max[2] ?? 0)
-              + (libraryPreviews?.[placingAsset]?.baseOffsetZ ?? 0),
+            z: placingSnap?.z ?? ((board.bbox?.max[2] ?? 0)
+              + (libraryPreviews?.[placingAsset]?.baseOffsetZ ?? 0)),
             rotX: 0,
             rotY: 0,
-            rotZ: 0,
+            rotZ: placingSnap?.rotZ ?? 0,
             attrs: libraryPreviews?.[placingAsset]?.attrs ?? {},
           }}
           selected={false}
@@ -1995,11 +2041,17 @@ const Viewport = forwardRef<ViewportHandle, {
           onMove={() => {}}
         />
       )}
+      {selectedComponent && onFold && !isPlacing && (
+        <FoldArrows component={selectedComponent} beam={beam} onFold={onFold} />
+      )}
       <Beam
         segments={beam}
         selectedKey={selectedSegmentKey}
-        onSelect={onSelectSegment}
+        // While placing, a click on the beam is a drop INTO it, not a pick of
+        // the leg: the pick cylinders would swallow it before the board saw it.
+        onSelect={isPlacing ? undefined : onSelectSegment}
         editor={beamEditor}
+        board={board.bbox}
       />
 
       {rodAlignments.map((alignment, index) => (

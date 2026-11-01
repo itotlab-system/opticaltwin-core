@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { Lang, translate } from "./i18n";
+import { readEditorName, writeEditorName } from "./editorName";
 
 type Theme = "dark" | "light";
 
@@ -51,6 +52,8 @@ interface Settings {
   bgColor: string;                            // …as a hex colour
   setViewportBg: (bg: ViewportBg) => void;
   setBgProject: (project: string | null) => void;  // which project's choice is live
+  editorName: string;                         // "" until the person gives one
+  setEditorName: (name: string) => void;
   t: (key: string, vars?: Record<string, string | number>) => string;
   toggleTheme: () => void;
   toggleLang: () => void;
@@ -66,6 +69,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     () => (localStorage.getItem("ot.lang") as Lang) || "en"
   );
   const [bgProject, setBgProject] = useState<string | null>(null);
+  const [editorName, setEditorNameState] = useState(readEditorName);
   const [viewportBg, setViewportBgState] = useState<ViewportBg>(() => readBg(null));
 
   // Swap in the open project's own background when it changes.
@@ -86,6 +90,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("ot.lang", lang);
   }, [lang]);
 
+  const setEditorName = (name: string) => {
+    writeEditorName(name);
+    setEditorNameState(readEditorName());
+  };
+
   const resolvedBg = viewportBg === "auto" ? theme : viewportBg;
 
   const value: Settings = {
@@ -96,6 +105,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     bgColor: VIEWPORT_BG[resolvedBg],
     setViewportBg,
     setBgProject,
+    editorName,
+    setEditorName,
     t: (key, vars) => translate(lang, key, vars),
     toggleTheme: () => setTheme((t) => (t === "dark" ? "light" : "dark")),
     toggleLang: () => setLang((l) => (l === "en" ? "ja" : "en")),

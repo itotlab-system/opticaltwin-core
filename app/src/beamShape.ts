@@ -17,9 +17,14 @@ export interface SegmentShape {
   lengthMm?: number;
 }
 
-// How far an escaping ray is drawn before it stops. The tracer runs it to 10 m,
-// which would bury the bench in a solid tube.
+// The shortest an escaping ray is drawn. The tracer runs it to 10 m, which
+// would bury the bench in a solid tube, so it stops at the board's edge
+// instead (see openEndReach) — and never shorter than this, so a ray leaving
+// a part near the edge still shows which way it goes.
 export const OPEN_END_DRAW_MM = 220;
+
+/** The part of the board a beam is drawn across: its plan rectangle. */
+export type BoardBounds = { min: readonly number[]; max: readonly number[] } | null | undefined;
 
 export const DEFAULT_BEAM_WIDTH_MM = 6;
 
@@ -81,9 +86,35 @@ export function shapeOf(seg: BeamSegment): SegmentShape {
  * Independent of `lengthMm` on purpose — it is what the editor anchors and
  * scales itself against, so dragging the length doesn't move the goalposts.
  */
-export function naturalLengthOf(seg: BeamSegment): number {
+export function naturalLengthOf(seg: BeamSegment, board?: BoardBounds): number {
   const geometric = segmentLength(seg);
-  return seg.to ? geometric : Math.min(geometric, OPEN_END_DRAW_MM);
+  if (seg.to) return geometric;
+  return Math.min(geometric, Math.max(OPEN_END_DRAW_MM, openEndReach(seg, board)));
+}
+
+/**
+ * How far an escaping ray runs before it leaves the board, in plan.
+ *
+ * Building beam-first, the open beam is where the next part goes: drawing it
+ * all the way across the board shows the whole line it can be dropped on,
+ * where a fixed short stub ended in mid-air a few holes out of the laser.
+ * 0 when there is no board, or the ray starts off it.
+ */
+export function openEndReach(seg: BeamSegment, board?: BoardBounds): number {
+  if (!board || seg.pts.length < 2) return 0;
+  const [a, b] = [seg.pts[0], seg.pts[seg.pts.length - 1]];
+  const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const length = Math.hypot(d[0], d[1], d[2]);
+  if (length < 1e-9) return 0;
+  let reach = Infinity;
+  for (const axis of [0, 1]) {
+    const v = d[axis] / length;
+    if (a[axis] < board.min[axis] || a[axis] > board.max[axis]) return 0;
+    if (Math.abs(v) < 1e-9) continue;
+    const edge = v > 0 ? board.max[axis] : board.min[axis];
+    reach = Math.min(reach, (edge - a[axis]) / v);
+  }
+  return Number.isFinite(reach) ? reach : 0;
 }
 
 /**
@@ -92,9 +123,9 @@ export function naturalLengthOf(seg: BeamSegment): number {
  * Defaults to the natural length. Overriding it only changes the drawing — the
  * optic at the far end stays exactly where it is.
  */
-export function drawnLengthOf(seg: BeamSegment): number {
+export function drawnLengthOf(seg: BeamSegment, board?: BoardBounds): number {
   if (seg.lengthMm !== undefined) return seg.lengthMm;
-  return naturalLengthOf(seg);
+  return naturalLengthOf(seg, board);
 }
 
 /** Which shape a leg is currently drawn as. */

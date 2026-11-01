@@ -6,9 +6,14 @@ import type {
   MovePayload,
   PinAnnotation,
   ProjectData,
+  LaserOption,
+  NewProjectStart,
+  PhotoBuildPart,
+  PhotoLabels,
   ProjectSummary,
   Template,
 } from "./types";
+import { editorHeaders } from "./editorName";
 
 // In dev these go through the Vite proxy to the Python backend (:8000).
 const j = (r: Response) => {
@@ -18,16 +23,23 @@ const j = (r: Response) => {
 const post = (url: string, body?: unknown) =>
   fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    // Every edit goes through here, so every edit says who made it.
+    headers: { "Content-Type": "application/json", ...editorHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   }).then(j);
 
 export const api = {
-  listProjects: (): Promise<{ projects: ProjectSummary[]; templates: Template[] }> =>
-    fetch("/api/projects").then(j),
+  listProjects: (): Promise<{
+    projects: ProjectSummary[]; templates: Template[];
+    lasers?: LaserOption[]; defaultBeamHeight?: number;
+  }> => fetch("/api/projects").then(j),
 
-  createProject: (name: string, template: string): Promise<{ ok: boolean; name: string }> =>
-    post("/api/projects", { name, template }),
+  // `start` only matters for the "from_laser" template: which laser, and the
+  // beam height (mm above the board) the whole design is built at.
+  createProject: (
+    name: string, template: string, start: NewProjectStart = {},
+  ): Promise<{ ok: boolean; name: string }> =>
+    post("/api/projects", { name, template, ...start }),
 
   removeProject: (name: string) => post(`/api/projects/${name}/remove`),
 
@@ -105,8 +117,37 @@ export const api = {
   updateGroups: (p: string, groups: ComponentGroup[]): Promise<{ ok: boolean; groups: ComponentGroup[] }> =>
     post(`/api/projects/${p}/groups`, { groups }),
 
-  addComponent: (p: string, asset: string, x: number, y: number) =>
-    post(`/api/projects/${p}/add`, { asset, x, y }),
+  // `snap` lets an in-beam part dropped near the beam land IN it (centred, at
+  // beam height, facing along it); false puts it exactly where it was dropped.
+  addComponent: (
+    p: string, asset: string, x: number, y: number, snap = true,
+  ): Promise<{ ok: boolean; name: string; snapped: string | null }> =>
+    post(`/api/projects/${p}/add`, { asset, x, y, snap }),
+
+  // Turn a mirror or beamsplitter so the beam leaves it to that side.
+  foldBeam: (p: string, c: string, turn: "left" | "right", renderMode: string): Promise<MovePayload> =>
+    post(`/api/projects/${p}/components/${c}/fold`, { turn, renderMode }),
+
+  // --- building a bench from a photo (see PhotoBuilder) -------------------
+  uploadPhoto: (p: string, jpeg: Blob): Promise<{ ok: boolean; file: string }> =>
+    fetch(`/api/projects/${p}/photo`, {
+      method: "POST",
+      headers: { "Content-Type": "image/jpeg", ...editorHeaders() },
+      body: jpeg,
+    }).then(j),
+
+  photoUrl: (p: string, file: string) => `/api/projects/${p}/photo/${file}`,
+
+  getPhotoLabels: (p: string): Promise<PhotoLabels> =>
+    fetch(`/api/projects/${p}/photo-labels`).then(j),
+
+  savePhotoLabels: (p: string, labels: PhotoLabels) =>
+    post(`/api/projects/${p}/photo-labels`, labels),
+
+  buildFromPhoto: (
+    p: string, beamHeight: number, parts: PhotoBuildPart[], renderMode: string,
+  ): Promise<ProjectData & { built: Record<string, string> }> =>
+    post(`/api/projects/${p}/photo/build`, { beamHeight, parts, renderMode }),
 
   deleteComponent: (p: string, c: string) =>
     post(`/api/projects/${p}/delete/${c}`),

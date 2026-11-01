@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import type { ProjectSummary, Template } from "../types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { LaserOption, NewProjectStart, ProjectSummary, Template } from "../types";
 import { useSettings } from "../settings";
-import { colorFor } from "./typeColor";
 import { cachedBenchThumb, pruneBenchThumbs, useBenchThumbnails } from "./benchThumbs";
 import { boardLabel, editedLabel } from "./relativeTime";
 import CardMenu from "./CardMenu";
@@ -12,14 +11,28 @@ import FolderPicker from "./FolderPicker";
 // lab that works inside one year's folder would re-pick it all day.
 const TAB_KEY = "ot.galleryFolder";
 
+const FROM_LASER = "from_laser";
+
+// A dot of the beam's own colour: people pick "the green one", not "NPL52B".
+const COLOR_DOT: Record<string, string> = {
+  violet: "🟣", blue: "🔵", green: "🟢", yellow: "🟡", orange: "🟠", red: "🔴",
+  infrared: "⚫",
+};
+
 export default function ProjectGallery({
-  projects, templates, onOpen, onCreate, onDelete, onDuplicate, onRename, onFile,
+  projects, templates, lasers = [], defaultBeamHeight = 100,
+  onOpen, onCreate, onDelete, onDuplicate, onRename, onFile,
 }: {
   projects: ProjectSummary[];
   templates: Template[];
+  /** Catalogue lasers a "Design from a laser" project can start from. */
+  lasers?: LaserOption[];
+  defaultBeamHeight?: number;
   onOpen: (name: string) => void;
   /** `folder` files the new project on creation; "" leaves it unfiled. */
-  onCreate: (name: string, template: string, folder: string) => Promise<void>;
+  onCreate: (
+    name: string, template: string, folder: string, start?: NewProjectStart,
+  ) => Promise<void>;
   onDelete: (name: string) => Promise<void>;
   onDuplicate: (name: string) => Promise<void>;
   onRename: (name: string, newName: string) => Promise<void>;
@@ -29,7 +42,29 @@ export default function ProjectGallery({
   const { t, lang } = useSettings();
   const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState("");
-  const [template, setTemplate] = useState(templates[0]?.key ?? "blank");
+  // A new design starts from a laser when the server offers that: it is the
+  // beam-first way in, and the board is never empty when the user arrives.
+  const preferred = (list: Template[]) =>
+    (list.find((tp) => tp.key === FROM_LASER) ?? list[0])?.key ?? "blank";
+  const [template, setTemplate] = useState(() => preferred(templates));
+  const [templateTouched, setTemplateTouched] = useState(false);
+  useEffect(() => {
+    if (!templateTouched) setTemplate(preferred(templates));
+  }, [templates, templateTouched]);
+  const [laser, setLaser] = useState("");
+  // A template the UI has no words for shows the server's label -- not its
+  // raw i18n key ("tpl_4f_default"), which is what t() returns when missing.
+  const templateLabel = (tp: Template) => {
+    const key = `tpl_${tp.key}`;
+    const label = t(key);
+    return label === key ? tp.label : label;
+  };
+  // "🟢 Green · 520 nm (NPL52B)"; the model number stays, last, for whoever
+  // has to order one. No wavelength in the catalogue = no colour claimed.
+  const laserLabel = (l: LaserOption) => l.color
+    ? `${COLOR_DOT[l.color] ?? ""} ${t(`color_${l.color}`)} · ${l.wavelength_nm} nm (${l.model})`
+    : `${l.model} (${t("wavelength_unknown")})`;
+  const [beamHeight, setBeamHeight] = useState(String(defaultBeamHeight));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   // Name of the project currently being copied — its card shows "Duplicating…"
@@ -144,6 +179,19 @@ export default function ProjectGallery({
     }
   }
 
+  const newFormRef = useRef<HTMLDivElement>(null);
+  function openNewForm() {
+    setShowNew(true);
+    // The form opens at the top of the page; bring it to the user, who
+    // clicked at the bottom of the grid.
+    requestAnimationFrame(() =>
+      newFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  }
+
+  function closeNewForm() {
+    setShowNew(false); setName(""); setErr("");
+  }
+
   async function submit() {
     if (!name.trim()) { setErr(t("err_name")); return; }
     setBusy(true); setErr("");
@@ -151,7 +199,10 @@ export default function ProjectGallery({
       // A project created while a folder tab is open belongs in that folder —
       // that is what "I am working in 2027年度" means. Filing it afterwards
       // from the card menu would be busywork every single time.
-      await onCreate(name.trim(), template, tab);
+      const start: NewProjectStart = template === FROM_LASER
+        ? { laser: laser || lasers[0]?.asset, beamHeight: Number(beamHeight) }
+        : {};
+      await onCreate(name.trim(), template, tab, start);
       setShowNew(false); setName("");
     } catch (e: any) {
       setErr(e?.message?.includes("409") ? t("err_exists") : t("err_create"));
@@ -240,13 +291,6 @@ export default function ProjectGallery({
             ]}
           />
         </div>
-        {/* The type colours stay as a thin strip: the picture says what the
-            bench looks like, the strip still says what is on it. */}
-        <div className="swatches">
-          {p.types.map((ty, i) => (
-            <span key={i} className="chip" style={{ background: colorFor(ty) }} title={ty} />
-          ))}
-        </div>
         {/* What a card can say that the picture cannot: when this bench was
             last touched, and which board it is. The part count is gone —
             "47 parts" is mostly posts and holders, and said nothing about
@@ -256,7 +300,17 @@ export default function ProjectGallery({
             t("duplicating")
           ) : (
             <>
-              <span>{editedLabel(p.modified, t, lang)}</span>
+              <span className="card-edited">
+                {p.lastEditor && (
+                  <>
+                    <span className="card-editor" title={p.lastEditor}>
+                      {p.lastEditor}
+                    </span>
+                    {" · "}
+                  </>
+                )}
+                {editedLabel(p.modified, t, lang)}
+              </span>
               <span className="card-board">
                 {boardLabel(p.boardSizeX, p.boardSizeY)}
               </span>
@@ -274,25 +328,57 @@ export default function ProjectGallery({
           <h1>{t("gallery_title")}</h1>
           <p>{t("gallery_subtitle")}</p>
         </div>
-        <button className="primary big" onClick={() => setShowNew((s) => !s)}>
-          {showNew ? t("cancel") : t("new_project")}
-        </button>
       </div>
 
       {showNew && (
-        <div className="newform">
+        <div className="newform" ref={newFormRef}>
           <input
             autoFocus placeholder={t("name_placeholder")}
             value={name} onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+              if (e.key === "Escape") closeNewForm();
+            }}
           />
-          <select value={template} onChange={(e) => setTemplate(e.target.value)}>
+          <select
+            value={template} data-testid="new-template"
+            onChange={(e) => { setTemplate(e.target.value); setTemplateTouched(true); }}
+          >
             {templates.map((tp) => (
-              <option key={tp.key} value={tp.key}>{t(`tpl_${tp.key}`) || tp.label}</option>
+              <option key={tp.key} value={tp.key}>{templateLabel(tp)}</option>
             ))}
           </select>
-          <button className="primary" disabled={busy} onClick={submit}>
+          {template === FROM_LASER && (
+            <>
+              <select
+                value={laser || lasers[0]?.asset || ""} data-testid="new-laser"
+                aria-label={t("new_laser")} title={t("new_laser")}
+                onChange={(e) => setLaser(e.target.value)}
+              >
+                {lasers.map((l) => (
+                  <option key={l.asset} value={l.asset}>{laserLabel(l)}</option>
+                ))}
+              </select>
+              <label className="beam-height">
+                {t("beam_height")}
+                <input
+                  type="number" min={10} max={300} step={1}
+                  value={beamHeight} data-testid="new-beam-height"
+                  onChange={(e) => setBeamHeight(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submit()}
+                />
+                mm
+              </label>
+            </>
+          )}
+          {/* Not before the templates arrive: until then the choice is a
+              placeholder "blank", and a quick click would silently make an
+              empty board instead of the laser start. */}
+          <button className="primary" disabled={busy || templates.length === 0} onClick={submit}>
             {busy ? t("creating") : t("create")}
+          </button>
+          <button data-testid="new-cancel" disabled={busy} onClick={closeNewForm}>
+            {t("cancel")}
           </button>
           {err && <span className="err">{err}</span>}
         </div>
@@ -321,10 +407,23 @@ export default function ProjectGallery({
         </div>
       )}
 
-      {sections.map((s) => (
+      {sections.map((s, i) => (
         <section key={s.key} className="folder-section">
           {s.label && <h2 className="folder-head">{s.label}</h2>}
-          <div className="cards">{s.items.map(card)}</div>
+          <div className="cards">
+            {s.items.map(card)}
+            {/* The way to a new bench sits where the next bench will appear,
+                at the end of the list — not only up in the corner. */}
+            {i === sections.length - 1 && !showNew && (
+              <button
+                className="card-new" data-testid="new-project-tile"
+                onClick={openNewForm}
+              >
+                <span className="card-new-plus" aria-hidden>＋</span>
+                <span className="card-new-label">{t("new_project_tile")}</span>
+              </button>
+            )}
+          </div>
         </section>
       ))}
 

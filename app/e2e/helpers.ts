@@ -18,12 +18,30 @@ export async function loginIfNeeded(page: Page) {
     .waitFor({ state: "visible", timeout: 10_000 })
     .then(() => true)
     .catch(() => false);
-  if (!shown) return;
+  if (shown) {
+    await passwordField.fill(process.env.OT_PASSWORD || "dev");
+    // The gate's button is labelled from i18n ("Log in" / "ログイン"), so submit
+    // the form from the field instead of matching either wording.
+    await passwordField.press("Enter");
+  }
+  await giveEditorNameIfAsked(page);
+}
 
-  await passwordField.fill(process.env.OT_PASSWORD || "dev");
-  // The gate's button is labelled from i18n ("Log in" / "ログイン"), so submit
-  // the form from the field instead of matching either wording.
-  await passwordField.press("Enter");
+/**
+ * A fresh browser is asked once who it is (EditorNamePrompt), over the app,
+ * and nothing can be clicked until it answers. Every test starts from a fresh
+ * browser, so answer for it.
+ */
+export async function giveEditorNameIfAsked(page: Page, name = "e2e") {
+  const field = page.locator(".name-pick input");
+  const asked = await field
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!asked) return;
+  await field.fill(name);
+  await field.press("Enter");
+  await field.waitFor({ state: "detached" });
 }
 
 /**

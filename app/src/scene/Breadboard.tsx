@@ -1,5 +1,5 @@
 import { Instances, Instance } from "@react-three/drei";
-import type { Vector3 } from "three";
+import type { Ray, Vector3 } from "three";
 import type { Board } from "../types";
 import Component3D from "./Component3D";
 
@@ -11,8 +11,10 @@ export default function Breadboard({
   onBoardPointerMove,
 }: {
   board: Board;
-  onPlace?: (point: Vector3) => void;
-  onPreviewMove?: (point: Vector3 | null) => void;
+  // The pointer ray comes too: a beam floats above the board, so what the
+  // cursor is over is a question about the line of sight, not the board point.
+  onPlace?: (point: Vector3, ray: Ray) => void;
+  onPreviewMove?: (point: Vector3 | null, ray?: Ray) => void;
   onBoardClick?: (x: number, y: number, z: number) => void;
   onBoardPointerMove?: (point: Vector3 | null) => void;
 }) {
@@ -61,12 +63,12 @@ export default function Breadboard({
           position={[center[0], center[1], top + 0.8]}
           onPointerMove={(e) => {
             e.stopPropagation();
-            onPreviewMove?.(e.point);
+            onPreviewMove?.(e.point, e.ray);
           }}
           onPointerOut={() => onPreviewMove?.(null)}
           onClick={(e) => {
             e.stopPropagation();
-            onPlace?.(e.point);
+            onPlace?.(e.point, e.ray);
           }}
         >
           <planeGeometry args={[size[0], size[1]]} />

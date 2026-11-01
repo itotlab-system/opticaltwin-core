@@ -18,6 +18,8 @@ import hmac
 import functools
 import secrets
 import threading
+import datetime
+import urllib.parse
 from flask import Flask, jsonify, request, send_from_directory, abort, session
 from pxr import Usd, UsdGeom, Gf, Sdf
 
@@ -27,6 +29,8 @@ import templates as tpl
 import setup_projects
 import usd_utility as uu
 import beam_tracer
+import beam_first
+import generic_parts
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECTS_DIR = os.path.join(ROOT_DIR, "projects")
@@ -416,8 +420,8 @@ def _inherited_material_value(prim, component_prim, name):
     return None
 
 
-def _component_meshes(stage, component_prim):
-    """Serialize referenced UsdGeom.Mesh geometry in component-local space."""
+def _component_meshes(stage, component_prim, *, beam_only=False):
+    """Read local mesh data; beam-only reads need transparent points, not faces."""
     meshes = []
     xcache = UsdGeom.XformCache()
     component_to_world = xcache.GetLocalToWorldTransform(component_prim)
@@ -428,6 +432,9 @@ def _component_meshes(stage, component_prim):
             continue
 
         usd_mesh = UsdGeom.Mesh(prim)
+        display_opacity = usd_mesh.GetDisplayOpacityAttr().Get() or [1.0]
+        if beam_only and not float(display_opacity[0]) < 1.0:
+            continue
         points = usd_mesh.GetPointsAttr().Get() or []
         counts = usd_mesh.GetFaceVertexCountsAttr().Get() or []
         face_indices = usd_mesh.GetFaceVertexIndicesAttr().Get() or []
@@ -445,6 +452,10 @@ def _component_meshes(stage, component_prim):
                 round(float(local_point[2]), 6),
             ])
 
+        if beam_only:
+            meshes.append({"points": local_points, "opacity": float(display_opacity[0])})
+            continue
+
         # Three.js consumes triangle indices. Triangulate any polygonal USD
         # faces with a fan while preserving the authored winding order.
         triangles = []
@@ -457,7 +468,6 @@ def _component_meshes(stage, component_prim):
             offset += count
 
         display_color = usd_mesh.GetDisplayColorAttr().Get() or [(0.6, 0.7, 0.8)]
-        display_opacity = usd_mesh.GetDisplayOpacityAttr().Get() or [1.0]
         color = display_color[0]
         mesh_data = {
             "points": local_points,
@@ -1721,6 +1731,7 @@ def records_history(view):
             _rollback_history(name, redo_was)
             raise
         _trim_history(name)
+        _record_activity(name)
         return response
     wrapper.records_history = True     # asserted by tests/test_history.py
     return wrapper
@@ -1784,6 +1795,7 @@ def _project_summary(name):
         boardSizeY=_card_size(board["sizeY"]),
         folder=meta["folder"],
         archived=meta["archived"],
+        lastEditor=_last_editor(name, modified),
     )
 
 
@@ -1867,6 +1879,121 @@ def _write_project_meta(name, meta):
     return meta
 
 
+# --- Who edited: the activity sidecar ---------------------------------------
+#
+# The login is one shared password, so the server cannot tell lab members apart
+# on its own. The client asks each person for a name once, remembers it, and
+# sends it on every request as X-OT-Editor. Each landed edit is recorded in
+# `projects/<n>/activity.json`:
+#
+#     {"last": {"name": "山田", "at": 1790150000.12},
+#      "days": {"2026-09-23": {"山田": 12, "Smith": 3}}}
+#
+# `days` is a day-by-name tally, not a log of every drag: enough to count how
+# many people edit each month (the adoption goal) and small enough to read in a
+# git diff. `last` is who made the most recent edit, for the gallery card's
+# "山田 · 1 分前に編集"; `at` is the layer's mtime right after that edit, so
+# the card can tell whether the layer has changed since (see _last_editor).
+#
+# Like project.json it lives in the project folder, so rename carries it and the
+# autosave commits it -- but a duplicate starts without one, because nobody has
+# edited the copy yet. A name is trusted as typed: this records who says they
+# edited, on a LAN behind a shared password, and is not access control.
+EDITOR_HEADER = "X-OT-Editor"
+ACTIVITY_FILE = "activity.json"
+EDITOR_MAX_LEN = 40
+# How far the recorded edit time may sit from the layer's mtime and still be
+# the same edit. Both are read from the same file on the same disk, so they
+# normally agree exactly; the slack only absorbs coarse filesystem timestamps.
+LAST_EDIT_SLACK_S = 2.0
+_ACTIVITY_LOCK = threading.Lock()
+
+
+def _clean_editor(raw):
+    """The editor name from the header, or "" when there is none to record.
+
+    The client percent-encodes it, since a header can only carry Latin-1 and
+    names are routinely Japanese. Trimmed, capped and stripped of control
+    characters, the same way a folder label is.
+    """
+    if not isinstance(raw, str) or not raw:
+        return ""
+    name = urllib.parse.unquote(raw, errors="replace")
+    name = re.sub(r"[\x00-\x1f\x7f]", " ", name).strip()
+    return name[:EDITOR_MAX_LEN]
+
+
+def _activity_path(name):
+    return os.path.join(PROJECTS_DIR, name, ACTIVITY_FILE)
+
+
+def _read_activity(name):
+    """The sidecar, or {} for a missing or unreadable file. Never raises."""
+    try:
+        with open(_activity_path(name), encoding="utf-8") as fh:
+            loaded = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _record_activity(name):
+    """Count one edit of `name` for its editor, and remember them as the last.
+
+    Anonymous edits are not recorded -- they come from the legacy editor or a
+    client too old to ask. They still change the layer, which is exactly what
+    makes a stale `last` stop matching it.
+    """
+    editor = _clean_editor(request.headers.get(EDITOR_HEADER, ""))
+    if not editor:
+        return
+    day = datetime.date.today().isoformat()
+    try:
+        at = os.path.getmtime(project_setup(name))
+    except OSError:
+        at = 0.0
+    with _ACTIVITY_LOCK:
+        activity = _read_activity(name)
+        days = activity.get("days")
+        if not isinstance(days, dict):
+            days = activity["days"] = {}
+        counts = days.get(day)
+        if not isinstance(counts, dict):
+            counts = days[day] = {}
+        counts[editor] = int(counts.get(editor, 0) or 0) + 1
+        activity["last"] = {"name": editor, "at": at}
+        path = _activity_path(name)
+        tmp = f"{path}.tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(activity, fh, ensure_ascii=False, indent=2,
+                          sort_keys=True)
+                fh.write("\n")
+            os.replace(tmp, path)
+        except OSError:
+            # Losing a tally must never fail the edit it was counting.
+            pass
+
+
+def _last_editor(name, modified):
+    """Who made the layer what it is now, or "" when that is not known.
+
+    Only a name whose recorded edit time matches the layer's mtime is returned.
+    The layer also changes without passing through a named edit -- the
+    autosave's git pull bringing in another copy's work, a hand edit, the
+    legacy editor -- and the card must then show the time alone rather than
+    credit the change to whoever edited before it. No name beats a wrong one.
+    """
+    last = _read_activity(name).get("last")
+    if not isinstance(last, dict):
+        return ""
+    editor, at = last.get("name"), last.get("at")
+    if not isinstance(editor, str) or not isinstance(at, (int, float)):
+        return ""
+    if abs(float(at) - float(modified)) > LAST_EDIT_SLACK_S:
+        return ""
+    return editor
+
 def _card_size(value):
     """A board dimension fit to print on a gallery card, else 0.
 
@@ -1890,17 +2017,19 @@ PLACEMENT_ATTR_KEYS = (
 )
 
 
-def _project_components(stage, render_mode="lo", include_fixed=False):
+def _project_components(stage, render_mode="lo", include_fixed=False, *, beam_only=False):
     if render_mode not in ("hi", "lo"):
         raise ValueError("render_mode must be 'hi' or 'lo'")
     comps = []
     cad_assets = ol.cad_library_assets(LIB_DIR)
+    asset_data_cache = {}
     for prim in _component_prims(stage, include_fixed=include_fixed):
         x, y, z, rot_x, rot_y, rot_z = _placement_xform_values(prim)
         t = prim.GetAttribute("optics:type").Get()
         asset = _component_asset_name(prim)
         geometry_stage = stage
         geometry_root = prim
+        geometry_key = None
         placement_attrs = _optics_attrs(prim)
         attrs = placement_attrs
         model_pose = {
@@ -1920,28 +2049,64 @@ def _project_components(stage, render_mode="lo", include_fixed=False):
                 if render_mode == "hi":
                     continue
             else:
-                asset_stage = Usd.Stage.Open(geometry_path)
-                if (
-                    asset_stage is not None
-                    and asset_stage.GetDefaultPrim().IsValid()
-                ):
-                    geometry_stage = asset_stage
-                    geometry_root = asset_stage.GetDefaultPrim()
-                    model_pose = _component_model_pose(
-                        geometry_stage, geometry_root
-                    )
-                    asset_type = geometry_root.GetAttribute("optics:type")
-                    if asset_type and asset_type.HasAuthoredValue():
-                        t = asset_type.Get()
-                    attrs = _optics_attrs(geometry_root)
+                geometry_key = (
+                    os.path.realpath(geometry_path),
+                    os.path.getmtime(geometry_path),
+                    render_mode,
+                    beam_only,
+                )
+                cached = asset_data_cache.get(geometry_key)
+                if cached is None:
+                    asset_stage = Usd.Stage.Open(geometry_path)
+                    if (
+                        asset_stage is None
+                        or not asset_stage.GetDefaultPrim().IsValid()
+                    ):
+                        if render_mode == "hi":
+                            continue
+                        geometry_key = None
+                    else:
+                        asset_root = asset_stage.GetDefaultPrim()
+                        asset_pose = _component_model_pose(asset_stage, asset_root)
+                        asset_type = asset_root.GetAttribute("optics:type")
+                        asset_attrs = _optics_attrs(asset_root)
+                        asset_type_value = (
+                            asset_type.Get()
+                            if asset_type and asset_type.HasAuthoredValue()
+                            else None
+                        )
+                        asset_meshes = (
+                            _component_meshes(asset_stage, asset_root, beam_only=True)
+                            if beam_only else _component_meshes(asset_stage, asset_root)
+                        )
+                        asset_primitives = _component_primitives(asset_stage, asset_root)
+                        cached = (
+                            asset_stage, asset_root, asset_pose, asset_type_value,
+                            asset_attrs, asset_meshes, asset_primitives,
+                        )
+                        asset_data_cache[geometry_key] = cached
+                if geometry_key is not None:
+                    (
+                        geometry_stage, geometry_root, model_pose, asset_type_value, attrs,
+                        meshes, primitives,
+                    ) = cached
+                    if asset_type_value is not None:
+                        t = asset_type_value
+                    attrs = dict(attrs)
                 elif render_mode == "hi":
                     continue
         elif render_mode == "hi":
-            if not asset:
+            # A placeholder has no library asset to read hi geometry from;
+            # its own inline shape is all there is, in either mode.
+            if not asset and not generic_parts.is_generic(prim):
                 continue
 
-        meshes = _component_meshes(geometry_stage, geometry_root)
-        primitives = _component_primitives(geometry_stage, geometry_root)
+        if geometry_key is None:
+            meshes = (
+                _component_meshes(geometry_stage, geometry_root, beam_only=True)
+                if beam_only else _component_meshes(geometry_stage, geometry_root)
+            )
+            primitives = _component_primitives(geometry_stage, geometry_root)
         component = dict(name=prim.GetName(), type=t,
                          x=round(x, 3), y=round(y, 3), z=round(z, 3),
                          rotX=round(rot_x, 3), rotY=round(rot_y, 3),
@@ -2256,10 +2421,12 @@ def _resolved_project_beam(stage, comps_by_name, beam_path):
 
 def _project_payload(name, stage, render_mode="lo"):
     _sync_cad_catalog()
-    comps = _project_components(stage, render_mode)
-    fixed = _project_components(stage, render_mode, include_fixed=True)
+    all_components = _project_components(stage, render_mode, include_fixed=True)
+    editable_names = {prim.GetName() for prim in _component_prims(stage)}
+    comps = [c for c in all_components if c["name"] in editable_names]
     board_model = next(
-        (component for component in fixed if component["type"] == "breadboard"),
+        (component for component in all_components
+         if component["type"] == "breadboard"),
         None,
     )
     beam_path = _beam_path(stage)
@@ -2299,10 +2466,10 @@ def _move_payload(name, stage, render_mode="lo"):
     only, so it is the same handful of kB in either mode, and the client merges
     it into the scene it already has (see mergeMove in app/src/moveMerge.ts).
 
-    `lo` is deliberate for the geometry pass here: it is only feeding the beam
-    tracer, which reads placement and physics metadata, not meshes.
+    Keep low-detail collision primitives and transparent mesh points for beam
+    bounds, without preparing opaque vertices, triangles or mesh materials.
     """
-    comps = _project_components(stage, "lo")
+    comps = _project_components(stage, "lo", beam_only=True)
     beam_path = _beam_path(stage)
     comps_by_name = {c["name"]: c for c in comps}
     return dict(
@@ -2342,8 +2509,102 @@ def list_projects():
             + [dict(key=k, label=v[1])
                for k, v in setup_projects.CLONE_TEMPLATES.items()
                if _clone_template_available(k)]
+            + ([dict(key=FROM_LASER_TEMPLATE, label="Design from a laser")]
+               if _laser_assets() else [])
+            + [dict(key=FROM_PHOTO_TEMPLATE, label="Start from a photo")]
         ),
+        lasers=[_laser_option(a) for a in _laser_assets()],
+        defaultBeamHeight=DEFAULT_BEAM_HEIGHT_MM,
     )
+
+
+# "Design from a laser": a blank board with the chosen laser already on it,
+# its beam at the chosen height. Beam-first building starts here -- every
+# optic is then dropped onto that beam (see beam_first.py).
+FROM_LASER_TEMPLATE = "from_laser"
+# "Start from a photo" is an empty board; the browser then opens the photo
+# screen on it, and the bench is built from what is marked there.
+FROM_PHOTO_TEMPLATE = "from_photo"
+DEFAULT_BEAM_HEIGHT_MM = 100.0
+BEAM_HEIGHT_RANGE_MM = (10.0, 300.0)
+LASER_MARGIN_MM = 25.0
+
+
+def _laser_assets():
+    """Catalogue lasers, offered as the starting point of a new design."""
+    return sorted(a for a in ol.component_library_assets()
+                  if a.split("/", 1)[0] == "Laser")
+
+
+# Colour names by wavelength, for people who think "the green laser", not
+# "NPL52B". Boundaries are the usual textbook bands; past 750 nm it is
+# infrared, which has no colour to see.
+COLOR_BANDS_NM = (
+    (450, "violet"), (495, "blue"), (570, "green"), (590, "yellow"),
+    (620, "orange"), (750, "red"),
+)
+
+
+def _color_name(wavelength_nm):
+    """'green' for 520 nm; None when the wavelength is not known."""
+    if wavelength_nm is None:
+        return None
+    for upper, name in COLOR_BANDS_NM:
+        if wavelength_nm < upper:
+            return name
+    return "infrared"
+
+
+def _laser_option(asset):
+    """A catalogue laser as the new-project picker shows it.
+
+    Only what the catalogue actually says: a laser whose asset carries no
+    optics:wavelength_nm gets no colour rather than a guessed one.
+    """
+    attrs = _library_previews().get(asset, {}).get("attrs", {})
+    wavelength = attrs.get("wavelength_nm")
+    wavelength = int(round(float(wavelength))) if wavelength is not None else None
+    model = os.path.basename(uu.get_component_name(asset))
+    return dict(
+        asset=asset,
+        model=re.sub(r"-Step$", "", model),
+        wavelength_nm=wavelength,
+        color=_color_name(wavelength),
+    )
+
+
+def _laser_component_name(asset):
+    """Green_Laser_520nm -- what the starting laser is called on the bench."""
+    option = _laser_option(asset)
+    if option["color"] is None:
+        return f"Laser_{re.sub(r'[^A-Za-z0-9_]', '_', option['model'])}"
+    return f"{option['color'].capitalize()}_Laser_{option['wavelength_nm']}nm"
+
+
+def _place_starting_laser(project, laser_asset, beam_height):
+    """Put the laser at the -X end of the board, beam along +X at beam_height."""
+    setup = project_setup(project)
+    stage = Usd.Stage.Open(setup)
+    root = str(stage.GetDefaultPrim().GetPath())
+    component_path = uu.get_component_name(laser_asset)
+    name = _unique_component_name(stage, root, _laser_component_name(laser_asset))
+    rel = uu.get_relative_component_usda_path(
+        LIB_DIR, component_path, os.path.dirname(setup))
+    ol.place(stage, root, name, rel, 0.0, 0.0, _board_top(stage))
+    laser = _traced_components(stage)[name]
+    attrs = laser.get("attrs", {})
+    board = _board(stage)
+    # The laser's rear end sits one hole in from the board's -X edge.
+    rear = float(attrs.get("centerX_mm", 0.0)) - float(attrs.get("sizeX_mm", 0.0)) / 2
+    x = board["centerX"] - board["extentXNegative"] + LASER_MARGIN_MM - rear
+    y = board["centerY"]
+    beam_z = _board_top(stage) + beam_height
+    z = beam_z - float(laser.get("physics", {}).get("emissionCenterZ_mm", 0.0))
+    z = max(z, _board_top(stage) + _library_base_offset_mm(laser_asset))
+    _set_xform(stage.GetPrimAtPath(f"{root}/{name}"), x, y, _clamp_z(stage, z),
+               0.0, 0.0, 0.0)
+    stage.GetRootLayer().Save()
+    return name
 
 
 def _clone_template_available(template):
@@ -2374,7 +2635,22 @@ def new_project():
     body = request.get_json(force=True)
     name = _clean_project_name(body.get("name"))
     template = body.get("template", "blank")
-    if template not in NEW_PROJECT_TEMPLATE_KEYS and template not in setup_projects.CLONE_TEMPLATES:
+    laser_asset = None
+    if template == FROM_LASER_TEMPLATE:
+        laser_asset = body.get("laser") or next(iter(_laser_assets()), None)
+        if laser_asset not in _laser_assets():
+            abort(400, "unknown laser")
+        try:
+            beam_height = float(body.get("beamHeight", DEFAULT_BEAM_HEIGHT_MM))
+        except (TypeError, ValueError):
+            abort(400, "beamHeight must be a number")
+        low, high = BEAM_HEIGHT_RANGE_MM
+        if not math.isfinite(beam_height) or not low <= beam_height <= high:
+            abort(400, f"beamHeight must be between {low:g} and {high:g} mm")
+        template = "blank"
+    elif template == FROM_PHOTO_TEMPLATE:
+        template = "blank"
+    elif template not in NEW_PROJECT_TEMPLATE_KEYS and template not in setup_projects.CLONE_TEMPLATES:
         abort(400, "unknown template")
     if os.path.exists(os.path.join(PROJECTS_DIR, name, "setup.usda")):
         abort(409, "project already exists")
@@ -2387,6 +2663,8 @@ def new_project():
         # It must come back as a response the browser can show; this used to
         # raise SystemExit, which killed the worker mid-request.
         abort(400, str(exc))
+    if laser_asset:
+        _place_starting_laser(name, laser_asset, beam_height)
     return jsonify(ok=True, name=name)
 
 def _unique_project_name(base):
@@ -2418,6 +2696,11 @@ def duplicate_project(name):
     meta = _project_meta(new_name)
     meta["archived"] = False
     _write_project_meta(new_name, meta)
+    # Nobody has edited the copy yet; its original's tally stays with it.
+    try:
+        os.remove(_activity_path(new_name))
+    except OSError:
+        pass
     return jsonify(ok=True, name=new_name, project=_project_summary(new_name))
 
 
@@ -2531,7 +2814,10 @@ def undo_project(name):
     render_mode = (request.get_json(silent=True) or {}).get("renderMode", "lo")
     if render_mode not in ("hi", "lo"):
         abort(400, "renderMode must be hi or lo")
-    return _step_history(name, "undo", "redo", render_mode)
+    response = _step_history(name, "undo", "redo", render_mode)
+    if response.get_json().get("stepped"):
+        _record_activity(name)
+    return response
 
 
 @app.post("/api/projects/<name>/redo")
@@ -2539,7 +2825,10 @@ def redo_project(name):
     render_mode = (request.get_json(silent=True) or {}).get("renderMode", "lo")
     if render_mode not in ("hi", "lo"):
         abort(400, "renderMode must be hi or lo")
-    return _step_history(name, "redo", "undo", render_mode)
+    response = _step_history(name, "redo", "undo", render_mode)
+    if response.get_json().get("stepped"):
+        _record_activity(name)
+    return response
 
 @app.get("/api/projects/<name>")
 def get_project(name):
@@ -2889,8 +3178,27 @@ def update_components(name):
 @records_history
 def add_component(name):
     body = request.get_json(force=True)
-    asset = body.get("asset", "")
-    component_path = uu.get_component_name(asset)
+    setup = project_setup(name)
+    stage = Usd.Stage.Open(setup)
+    comp_name = _add_asset(stage, body.get("asset", ""), float(body.get("x", 0)),
+                           float(body.get("y", 0)), body.get("name"))
+    snapped = None
+    if body.get("snap", True):
+        snapped = _snap_onto_beam(stage, comp_name,
+                                  float(body.get("x", 0)), float(body.get("y", 0)))
+    stage.GetRootLayer().Save()
+
+    return jsonify(ok=True, name=comp_name, snapped=snapped)
+
+
+def _add_asset(stage, asset, x, y, wanted_name=None):
+    """Place a catalogue part on the board at (x, y); return its prim name.
+
+    The authored layer is changed but not saved -- the caller saves once,
+    after anything else it does in the same edit (snapping, a whole photo
+    build).
+    """
+    component_path = uu.get_component_name(asset or "")
     library_assets = ol.component_library_assets()
     library_asset = (
         asset if asset in library_assets else f"{component_path}.usda"
@@ -2898,11 +3206,9 @@ def add_component(name):
     if library_asset not in library_assets:
         abort(400, "unknown asset")
     default_name = os.path.basename(component_path)
-    comp_name = body.get("name") or default_name
+    comp_name = wanted_name or default_name
     comp_name = re.sub(r"[^A-Za-z0-9_]", "_", comp_name)
-    setup = project_setup(name)
-    proj_dir = os.path.dirname(setup)
-    stage = Usd.Stage.Open(setup)
+    proj_dir = os.path.dirname(stage.GetRootLayer().realPath)
     root = str(stage.GetDefaultPrim().GetPath())
     comp_name = _unique_component_name(stage, root, comp_name)
     rel = uu.get_relative_component_usda_path(
@@ -2917,8 +3223,7 @@ def add_component(name):
     drop_z = _clamp_z(
         stage, _board_top(stage) + _library_base_offset_mm(library_asset)
     )
-    ol.place(stage, root, comp_name, rel,
-             float(body.get("x", 0)), float(body.get("y", 0)), drop_z)
+    ol.place(stage, root, comp_name, rel, x, y, drop_z)
     post_component = _matching_post_component(component_path)
     if post_component:
         post_name = f"{comp_name}_Post"
@@ -2930,8 +3235,7 @@ def add_component(name):
             LIB_DIR, post_component, proj_dir
         )
         post = ol.place(
-            stage, root, post_name, post_rel,
-            float(body.get("x", 0)), float(body.get("y", 0)),
+            stage, root, post_name, post_rel, x, y,
             _clamp_z(
                 stage,
                 _board_top(stage)
@@ -2945,9 +3249,434 @@ def add_component(name):
             post, "holderZOffset_mm", 0.0, Sdf.ValueTypeNames.Double
         )
         _sync_linked_post(stage, holder)
+    return comp_name
+
+
+def _add_generic(stage, role, size, label="", model="", x=0.0, y=0.0,
+                 request_part=False):
+    """Place a placeholder part on the board at (x, y); return its prim name."""
+    if role not in generic_parts.ROLES:
+        abort(400, "unknown role")
+    size = generic_parts.clean_size(size, role)
+    root = str(stage.GetDefaultPrim().GetPath())
+    stem = re.sub(r"[^A-Za-z0-9_]", "_", generic_parts.clean_text(label))
+    stem = re.sub(r"_+", "_", stem).strip("_") or role.capitalize()
+    # A Japanese label survives in optics:label but not in a prim name.
+    if not re.search(r"[A-Za-z0-9]", stem):
+        stem = role.capitalize()
+    elif not re.match(r"[A-Za-z_]", stem):
+        stem = f"{role.capitalize()}_{stem}"
+    comp_name = _unique_component_name(stage, root, stem)
+    prim = generic_parts.author(stage, f"{root}/{comp_name}", role, size,
+                                label=label, model=model, request_part=request_part)
+    # Its body is centred on its origin, so half its height lifts it onto
+    # the board -- the same "lands ON the board" rule as a catalogue part.
+    _set_xform(prim, x, y, _clamp_z(stage, _board_top(stage) + size[2] / 2),
+               0.0, 0.0, 0.0)
+    return comp_name
+
+
+@app.post("/api/projects/<name>/generic")
+@records_history
+def add_generic_part(name):
+    """Add a placeholder for a part the catalogue does not have.
+
+    Body: {role, size?: [x, y, z] mm, label?, model?, requestPart?, x, y,
+    snap?}. Dropped near the beam it snaps into it like any in-beam part.
+    """
+    body = request.get_json(force=True)
+    stage = Usd.Stage.Open(project_setup(name))
+    x, y = float(body.get("x", 0)), float(body.get("y", 0))
+    comp_name = _add_generic(stage, body.get("role"), body.get("size") or [],
+                             body.get("label", ""), body.get("model", ""), x, y,
+                             bool(body.get("requestPart")))
+    snapped = _snap_onto_beam(stage, comp_name, x, y) if body.get("snap", True) else None
     stage.GetRootLayer().Save()
-    
-    return jsonify(ok=True, name=comp_name)
+    return jsonify(ok=True, name=comp_name, snapped=snapped)
+
+
+# -------------------------------------------------------------------------
+# Building a bench from a photo
+# -------------------------------------------------------------------------
+# The photo and what was marked on it live beside the layer, like
+# project.json: they are the evidence the bench was built from, not scene
+# data, and being files in the project folder they travel with rename,
+# duplicate and git. The public export already leaves projects/ out.
+PHOTO_DIR = "photos"
+PHOTO_LABELS_FILE = "photo_labels.json"
+PHOTO_MAX_BYTES = 8 * 1024 * 1024
+PHOTO_LABELS_MAX_BYTES = 512 * 1024
+PHOTO_FILE = re.compile(r"^photo-\d{8,}\.jpg$")
+# Parts that stand ON the board (no beam height of their own).
+STANDING_TYPES = {"post", "holder", "mount", "rod", "cage", "breadboard"}
+
+
+def _photo_labels_path(name):
+    return os.path.join(PROJECTS_DIR, name, PHOTO_LABELS_FILE)
+
+
+def _photo_labels(name):
+    try:
+        with open(_photo_labels_path(name), encoding="utf-8") as fh:
+            loaded = json.load(fh)
+        return loaded if isinstance(loaded, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_photo_labels(name, labels):
+    path = _photo_labels_path(name)
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(labels, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
+
+
+@app.post("/api/projects/<name>/photo")
+def upload_photo(name):
+    """Store the bench photo (JPEG body). The browser has already shrunk it."""
+    project_setup(name)
+    data = request.get_data(cache=False)
+    if not data or len(data) > PHOTO_MAX_BYTES:
+        abort(400, "photo must be a JPEG under 8 MB")
+    if data[:3] != b"\xff\xd8\xff":
+        abort(400, "photo must be a JPEG")
+    folder = os.path.join(PROJECTS_DIR, name, PHOTO_DIR)
+    os.makedirs(folder, exist_ok=True)
+    filename = f"photo-{int(datetime.datetime.now().timestamp() * 1000)}.jpg"
+    with open(os.path.join(folder, filename), "wb") as fh:
+        fh.write(data)
+    return jsonify(ok=True, file=filename)
+
+
+@app.get("/api/projects/<name>/photo/<filename>")
+def photo_file(name, filename):
+    if not SAFE.match(name) or not PHOTO_FILE.match(filename):
+        abort(404)
+    return send_from_directory(os.path.join(PROJECTS_DIR, name, PHOTO_DIR),
+                               filename, max_age=3600)
+
+
+@app.get("/api/projects/<name>/photo-labels")
+def get_photo_labels(name):
+    project_setup(name)
+    return jsonify(_photo_labels(name))
+
+
+@app.post("/api/projects/<name>/photo-labels")
+def save_photo_labels(name):
+    """Save what was marked on the photo: calibration, feet, part choices.
+
+    Deliberately not an undo step (like the folder/archive sidecar): marking
+    a photo changes nothing on the bench until it is built.
+    """
+    project_setup(name)
+    raw = request.get_data(cache=False)
+    if len(raw) > PHOTO_LABELS_MAX_BYTES:
+        abort(400, "labels too large")
+    try:
+        labels = json.loads(raw or b"{}")
+    except ValueError:
+        abort(400, "labels must be JSON")
+    if not isinstance(labels, dict):
+        abort(400, "labels must be an object")
+    photo = labels.get("photo")
+    if photo is not None and (not isinstance(photo, str) or not PHOTO_FILE.match(photo)):
+        abort(400, "bad photo name")
+    # The build owns this map; a stale editor tab must not overwrite it.
+    labels["built"] = _photo_labels(name).get("built", {})
+    _write_photo_labels(name, labels)
+    return jsonify(ok=True)
+
+
+def _photo_part_spec(raw):
+    """One marked part from the build request, validated."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("id"), str):
+        abort(400, "each part needs an id")
+    try:
+        x, y = float(raw["x"]), float(raw["y"])
+    except (KeyError, TypeError, ValueError):
+        abort(400, "each part needs x and y in mm")
+    direction = None
+    if raw.get("dir") is not None:
+        try:
+            dx, dy = float(raw["dir"][0]), float(raw["dir"][1])
+        except (TypeError, ValueError, IndexError):
+            abort(400, "dir must be [dx, dy]")
+        if math.hypot(dx, dy) > 1e-9:
+            direction = (dx, dy)
+    generic = raw.get("generic")
+    asset = raw.get("asset")
+    if generic is not None:
+        if not isinstance(generic, dict) or generic.get("role") not in generic_parts.ROLES:
+            abort(400, "generic part needs a known role")
+    elif not isinstance(asset, str) or not asset:
+        abort(400, "each part needs an asset or a generic role")
+    return dict(id=raw["id"], x=x, y=y, dir=direction, asset=asset, generic=generic,
+                off_beam=bool(raw.get("offBeam")), emit_at=bool(raw.get("emitAt")))
+
+
+def _photo_part_type(spec):
+    if spec["generic"] is not None:
+        return generic_parts.ROLES[spec["generic"]["role"]][0]
+    preview = _library_previews().get(spec["asset"], {})
+    return preview.get("type") or ""
+
+
+def _place_photo_part(stage, spec):
+    if spec["generic"] is not None:
+        g = spec["generic"]
+        return _add_generic(stage, g["role"], g.get("size") or [], g.get("label", ""),
+                            g.get("model", ""), spec["x"], spec["y"],
+                            bool(g.get("requestPart")))
+    return _add_asset(stage, spec["asset"], spec["x"], spec["y"])
+
+
+def _orient_at_beam_height(stage, comp_name, x, y, rot_z, beam_z):
+    """Stand an in-beam part at (x, y) with its optical centre at beam_z."""
+    comp = _traced_components(stage)[comp_name]
+    ox, oy, oz = beam_first.origin_for(comp, [x, y, beam_z], 0.0, 0.0, rot_z)
+    _set_xform(stage.GetPrimAtPath(f"{stage.GetDefaultPrim().GetPath()}/{comp_name}"),
+               ox, oy, _clamp_z(stage, oz), 0.0, 0.0, rot_z)
+
+
+def _turn_towards(incoming, direction):
+    """'left' or 'right': which fold sends `incoming` closest to `direction`."""
+    cross = incoming[0] * direction[1] - incoming[1] * direction[0]
+    return "left" if cross >= 0 else "right"
+
+
+def _build_from_photo(stage, specs, beam_height):
+    """Place every marked part; return {part id: component name}.
+
+    Lasers first, so there is a beam. Then, repeatedly, the not-yet-placed
+    part that sits closest to the *start* of the beam goes next and snaps into
+    it -- so a lens takes the beam's direction and a mirror folds it before
+    the parts after it are placed, exactly as building beam-first by hand.
+    A mirror's arrow, when drawn, says which way the beam leaves it. Parts the
+    beam never reaches are stood where their foot was marked, facing their
+    arrow (or +X), at beam height.
+    """
+    built = {}
+    beam_z = _board_top(stage) + beam_height
+    root = str(stage.GetDefaultPrim().GetPath())
+    lasers = [s for s in specs if _photo_part_type(s) == "laser" and not s["off_beam"]]
+    rest = [s for s in specs if s not in lasers and not s["off_beam"]]
+    # Marked "not on the beam": stood where marked, never pulled into it.
+    loose = [s for s in specs if s["off_beam"]]
+
+    for spec in lasers:
+        name = _place_photo_part(stage, spec)
+        rot_z = beam_first.heading_deg(spec["dir"]) if spec["dir"] else 0.0
+        comp = _traced_components(stage)[name]
+        physics = comp.get("physics", {})
+        emission_z = float(physics.get("emissionCenterZ_mm", 0.0))
+        x, y = spec["x"], spec["y"]
+        if spec["emit_at"]:
+            # (x, y) is where the drafted beam starts: the laser's OUTPUT, so
+            # its body sits behind it.
+            back = float(physics.get("emissionOffset_mm", LASER_APERTURE_OFFSET_MM))
+            x -= math.cos(math.radians(rot_z)) * back
+            y -= math.sin(math.radians(rot_z)) * back
+        _set_xform(stage.GetPrimAtPath(f"{root}/{name}"), x, y,
+                   _clamp_z(stage, beam_z - emission_z), 0.0, 0.0, round(rot_z, 6))
+        built[spec["id"]] = name
+
+    remaining = list(rest)
+    while remaining:
+        comps = _traced_components(stage)
+        beam = _resolved_project_beam(stage, comps, _beam_path(stage))
+        best = None
+        for spec in remaining:
+            if _photo_part_type(spec) not in beam_first.SNAP_TYPES:
+                continue
+            hit = beam_first.nearest_leg(beam, spec["x"], spec["y"])
+            if hit is None:
+                continue
+            leg, point, _ = hit
+            index = beam.index(leg)
+            along = math.dist(point, leg["pts"][0])
+            if best is None or (index, along) < best[0]:
+                best = ((index, along), spec)
+        if best is None:
+            break
+        spec = best[1]
+        remaining.remove(spec)
+        name = _place_photo_part(stage, spec)
+        _snap_onto_beam(stage, name, spec["x"], spec["y"])
+        if _photo_part_type(spec) in beam_first.FOLD_TYPES and spec["dir"]:
+            comps = _traced_components(stage)
+            beam = _resolved_project_beam(stage, comps, _beam_path(stage))
+            leg = beam_first.incoming_leg(beam, name)
+            if leg is not None:
+                incoming = beam_first.leg_direction(leg)
+                _fold(stage, name, _turn_towards(incoming, spec["dir"]))
+        built[spec["id"]] = name
+
+    for spec in remaining + loose:
+        name = _place_photo_part(stage, spec)
+        if _photo_part_type(spec) not in STANDING_TYPES:
+            rot_z = beam_first.heading_deg(spec["dir"]) if spec["dir"] else 0.0
+            _orient_at_beam_height(stage, name, spec["x"], spec["y"],
+                                   round(rot_z, 6), beam_z)
+        elif spec["dir"]:
+            prim = stage.GetPrimAtPath(f"{root}/{name}")
+            x, y, z, *_ = _placement_xform_values(prim)
+            _set_xform(prim, x, y, z, 0.0, 0.0,
+                       round(beam_first.heading_deg(spec["dir"]), 6))
+        built[spec["id"]] = name
+    return built
+
+
+@app.post("/api/projects/<name>/photo/build")
+@records_history
+def build_from_photo(name):
+    """Turn the parts marked on the photo into the bench.
+
+    Body: {beamHeight, parts: [{id, x, y, dir?, asset | generic}], renderMode?}
+    with x/y already in board millimetres (the browser owns the photo-to-board
+    mapping, since it draws the predicted hole grid with it). Rebuilding first
+    removes what the previous build placed, so the photo stays the source and
+    the build can be repeated as the labels are corrected. One undo step.
+    """
+    body = request.get_json(force=True)
+    render_mode = body.get("renderMode", "lo")
+    if render_mode not in ("hi", "lo"):
+        abort(400, "renderMode must be hi or lo")
+    try:
+        beam_height = float(body.get("beamHeight", DEFAULT_BEAM_HEIGHT_MM))
+    except (TypeError, ValueError):
+        abort(400, "beamHeight must be a number")
+    low, high = BEAM_HEIGHT_RANGE_MM
+    if not math.isfinite(beam_height) or not low <= beam_height <= high:
+        abort(400, f"beamHeight must be between {low:g} and {high:g} mm")
+    parts = body.get("parts")
+    if not isinstance(parts, list):
+        abort(400, "parts must be a list")
+    specs = [_photo_part_spec(p) for p in parts]
+
+    stage = Usd.Stage.Open(project_setup(name))
+    root = str(stage.GetDefaultPrim().GetPath())
+    labels = _photo_labels(name)
+    for old in (labels.get("built") or {}).values():
+        if isinstance(old, str) and SAFE.match(old):
+            prim = stage.GetPrimAtPath(f"{root}/{old}")
+            if prim.IsValid():
+                post = _string_attr(prim, "pairedPost")
+                stage.RemovePrim(f"{root}/{old}")
+                if post and stage.GetPrimAtPath(f"{root}/{post}").IsValid():
+                    stage.RemovePrim(f"{root}/{post}")
+
+    built = _build_from_photo(stage, specs, beam_height)
+    groups_attr = stage.GetDefaultPrim().GetAttribute("optics:groups")
+    if groups_attr and groups_attr.HasAuthoredValue():
+        _write_groups(stage, _groups(stage))
+    stage.GetRootLayer().Save()
+
+    labels["built"] = built
+    _write_photo_labels(name, labels)
+    payload = _project_payload(name, stage, render_mode)
+    payload["ok"] = True
+    payload["built"] = built
+    return jsonify(payload)
+
+
+def _traced_components(stage):
+    """The tracer's view of the bench: placement + attrs + physics, by name."""
+    return {c["name"]: c for c in _project_components(stage, "lo")}
+
+
+def _snap_onto_beam(stage, comp_name, x, y):
+    """Centre a just-dropped optic on the beam leg it was dropped on.
+
+    Beam-first building: the user drops a lens near the beam and it lands IN
+    it -- at beam height, facing along it -- instead of on the board where the
+    click was. A mirror or beamsplitter also turns to fold the beam left, so
+    the drop visibly does something; the fold arrows change the side. Returns
+    the leg's key, or None when the part is not an in-beam type or the drop
+    was not near any beam.
+    """
+    comps = _traced_components(stage)
+    comp = comps.get(comp_name)
+    if comp is None or comp["type"] not in beam_first.SNAP_TYPES:
+        return None
+    others = {n: c for n, c in comps.items() if n != comp_name}
+    beam = _resolved_project_beam(stage, others, _beam_path(stage))
+    hit = beam_first.nearest_leg(beam, x, y)
+    if hit is None:
+        return None
+    leg, point, direction = hit
+    if comp["type"] in beam_first.FOLD_TYPES:
+        rot_z = beam_first.fold_rot_z(comp["type"], direction, "left")
+    else:
+        rot_z = round(beam_first.heading_deg(direction), 6)
+    ox, oy, oz = beam_first.origin_for(comp, point, 0.0, 0.0, rot_z)
+    _set_xform(stage.GetPrimAtPath(f"{stage.GetDefaultPrim().GetPath()}/{comp_name}"),
+               ox, oy, _clamp_z(stage, oz), 0.0, 0.0, rot_z)
+    return leg.get("key")
+
+
+def _fold(stage, comp, turn):
+    """Turn `comp` so the beam leaves it to `turn`; (status, message) on failure.
+
+    The surface the beam hits now, dropped onto the incoming line, is the
+    pivot: the part turns about it and stays in the beam.
+    """
+    comps = _traced_components(stage)
+    target = comps.get(comp)
+    if target is None:
+        return 404, "no such component"
+    if target["type"] not in beam_first.FOLD_TYPES:
+        return 400, "only a mirror or beamsplitter folds the beam"
+    beam = _resolved_project_beam(stage, comps, _beam_path(stage))
+    leg = beam_first.incoming_leg(beam, comp)
+    if leg is None:
+        return 409, "the beam does not reach this part"
+    direction = beam_first.leg_direction(leg)
+    try:
+        rot_z = beam_first.fold_rot_z(target["type"], direction, turn)
+    except ValueError as exc:
+        return 409, str(exc)
+    offset = beam_first.optical_centre_offset(
+        target, target["rotX"], target["rotY"], target["rotZ"])
+    centre = [target[k] + offset[i] for i, k in enumerate(("x", "y", "z"))]
+    on_beam = beam_first.project_onto_line(centre, leg["pts"][0], direction)
+    ox, oy, oz = beam_first.origin_for(target, on_beam, 0.0, 0.0, rot_z)
+    prim = stage.GetPrimAtPath(f"{stage.GetDefaultPrim().GetPath()}/{comp}")
+    _set_xform(prim, ox, oy, _clamp_z(stage, oz), 0.0, 0.0, rot_z)
+    return None
+
+
+@app.post("/api/projects/<name>/components/<comp>/fold")
+@records_history
+def fold_beam(name, comp):
+    """Turn a mirror or beamsplitter so the beam leaves it to the left or right.
+
+    Body: {turn: "left" | "right", renderMode?}. "Left" is counter-clockwise
+    seen from above, relative to the way the beam is travelling when it
+    arrives. The part's active surface stays on the incoming beam; only its
+    rotation changes, so nothing else on the bench moves (parts downstream
+    that are now off the beam stay where they are, by design).
+    """
+    if not SAFE.match(comp):
+        abort(400)
+    body = request.get_json(force=True)
+    turn = body.get("turn")
+    if turn not in beam_first.TURNS:
+        abort(400, "turn must be left or right")
+    render_mode = body.get("renderMode", "lo")
+    if render_mode not in ("hi", "lo"):
+        abort(400, "renderMode must be hi or lo")
+
+    stage = Usd.Stage.Open(project_setup(name))
+    error = _fold(stage, comp, turn)
+    if error:
+        abort(*error)
+    stage.GetRootLayer().Save()
+
+    payload = _move_payload(name, stage, render_mode)
+    payload["ok"] = True
+    return jsonify(payload)
 
 
 @app.post("/api/projects/<name>/components/duplicate")

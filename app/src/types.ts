@@ -225,9 +225,75 @@ export interface ProjectSummary {
   // never from the layer — see PROJECT_META_FILE in server.py.
   folder?: string;
   archived?: boolean;
+  // Who made the most recent edit, for "山田 · 1 分前に編集". "" when unknown:
+  // the server only names someone when their recorded edit is what the layer's
+  // mtime says it is — see _last_editor in server.py.
+  lastEditor?: string;
 }
 
 export interface Template {
   key: string;
   label: string;
+}
+
+/** What a placeholder part is: its role decides how the beam treats it. */
+export type GenericRole =
+  "laser" | "lens" | "mirror" | "beamsplitter" | "iris" | "camera" | "block";
+
+export interface GenericSpec {
+  role: GenericRole;
+  /** [along the beam, across, up] in mm. */
+  size?: [number, number, number];
+  label?: string;
+  model?: string;
+  requestPart?: boolean;
+}
+
+/** One part marked on the photo: its foot, optional arrow, and what it is. */
+export interface PhotoPart {
+  id: string;
+  px: number; py: number;          // foot, in photo pixels
+  ex?: number; ey?: number;        // arrow tip, in photo pixels
+  asset?: string;                  // a catalogue part ...
+  generic?: GenericSpec;           // ... or a placeholder
+  offBeam?: boolean;               // hardware etc.: not pulled into the beam
+}
+
+/** Everything marked on a project's photo — saved beside the layer. */
+export interface PhotoLabels {
+  photo?: string;
+  imgW?: number; imgH?: number;
+  calib?: { px: number; py: number; col: number; row: number }[];
+  beamHeight?: number;
+  /** The drafted beam, in photo pixels: paths[0] from the laser, the rest
+   *  branches that start on an earlier path. */
+  paths?: [number, number][][];
+  parts?: PhotoPart[];
+  built?: Record<string, string>;  // part id -> component name (server-owned)
+}
+
+/** A marked part as the build route takes it: already in board mm. */
+export interface PhotoBuildPart {
+  id: string;
+  x: number; y: number;
+  dir?: [number, number];
+  asset?: string;
+  generic?: GenericSpec;
+  offBeam?: boolean;
+  /** A laser whose OUTPUT is at (x, y) -- the start of a drafted beam. */
+  emitAt?: boolean;
+}
+
+/** A catalogue laser as the new-project picker offers it. */
+export interface LaserOption {
+  asset: string;
+  model: string;               // "NPL52B"
+  wavelength_nm: number | null;
+  color: string | null;        // "green"; null when the catalogue has no wavelength
+}
+
+/** How a "Design from a laser" project starts: the laser and its beam height. */
+export interface NewProjectStart {
+  laser?: string;
+  beamHeight?: number;
 }

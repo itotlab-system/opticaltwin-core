@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Html, Line } from "@react-three/drei";
 import type { BeamSegment } from "../types";
 import { DEFAULT_BEAM_WIDTH_MM, drawnLengthOf, naturalLengthOf } from "../beamShape";
+import type { BoardBounds } from "../beamShape";
 
 const YAXIS = new THREE.Vector3(0, 1, 0);
 // A leg drawn thinner than this disappears against a 600 mm bench.
@@ -51,9 +52,11 @@ const clampR = (mm: number) => Math.max(MIN_R, Math.min(mm / 2, MAX_R));
  * pinched to a waist. Bloom from the EffectComposer in Viewport adds the glow.
  */
 export default function Beam({
-  segments, selectedKey = null, onSelect, editor,
+  segments, selectedKey = null, onSelect, editor, board,
 }: {
   segments: BeamSegment[];
+  /** An open beam is drawn to this board's edge. */
+  board?: BoardBounds;
   selectedKey?: string | null;
   onSelect?: (seg: BeamSegment | null) => void;
   /** Rendered next to the selected leg, in 3D. */
@@ -84,7 +87,7 @@ export default function Beam({
 
       // How far this leg is drawn. Sketch only: shortening it leaves the optic
       // at the far end exactly where it is.
-      const drawn = Math.max(drawnLengthOf(seg), 0.01);
+      const drawn = Math.max(drawnLengthOf(seg, board), 0.01);
       const tip = start.clone().addScaledVector(dir, drawn);
       centerlines.push({
         key: `cl-${si}`,
@@ -131,12 +134,12 @@ export default function Beam({
       // anchoring it to the drawn tip would slide the card out from under the
       // pointer while you drag the Length bar.
       if (seg.key && seg.key === selectedKey) {
-        anchor = start.clone().addScaledVector(dir, naturalLengthOf(seg) / 2);
+        anchor = start.clone().addScaledVector(dir, naturalLengthOf(seg, board) / 2);
       }
     });
 
     return { frustums, centerlines, picks, anchor };
-  }, [segments, selectedKey]);
+  }, [segments, selectedKey, board]);
 
   return (
     <>

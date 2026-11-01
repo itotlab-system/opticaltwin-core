@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import App from "./App";
+import EditorNamePrompt from "./ui/EditorNamePrompt";
 import { useSettings } from "./settings";
 import { phrases } from "./i18n";
 
@@ -18,7 +19,7 @@ const ERROR_KEYS: Record<string, string> = {
 };
 
 export default function AuthGate() {
-  const { t } = useSettings();
+  const { t, editorName } = useSettings();
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -71,7 +72,16 @@ export default function AuthGate() {
     }
   }
 
-  if (status?.authenticated) return <App />;
+  // Past the password, a browser that has never said who it is asks once, over
+  // the app, before anything can be edited under no name.
+  if (status?.authenticated) {
+    return (
+      <>
+        <App />
+        {!editorName && <EditorNamePrompt required />}
+      </>
+    );
+  }
 
   return (
     <main className="login-page">

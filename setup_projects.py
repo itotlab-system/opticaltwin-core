@@ -41,7 +41,7 @@ DEFAULT_PROJECTS = [
 # stored setup's relative `../../components/...` references resolve unchanged in
 # the copy. Refresh a template by copying a project's setup.usda over it.
 CLONE_TEMPLATES = {
-    "4f_default": ("4f_default", "4f imaging system (default)"),
+    "4f_default": ("4f_default", "Sample 4f setup"),
 }
 
 

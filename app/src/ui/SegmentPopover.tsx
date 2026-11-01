@@ -4,6 +4,7 @@ import {
   SHAPE_PRESETS, drawnLengthOf, naturalLengthOf, shapeIdOf, shapeOf, widthOf,
   type SegmentShape,
 } from "../beamShape";
+import type { BoardBounds } from "../beamShape";
 import SweepSlider from "./SweepSlider";
 import { OVERLAY_CLASS } from "../scene/overlay";
 
@@ -21,23 +22,25 @@ const MAX_WIDTH_MM = 25.4;
  * different leg starts it beside that leg again.
  */
 export default function SegmentPopover({
-  segment, onShape, onClose,
+  segment, onShape, onClose, board,
 }: {
   segment: BeamSegment;
+  /** An open beam's natural length runs to this board's edge. */
+  board?: BoardBounds;
   onShape: (shape: SegmentShape) => void;
   onClose: () => void;
 }) {
   const shape = shapeOf(segment);
   // How far the beam is *drawn*. Editing it re-draws this leg and nothing
   // else — it never slides the optic at the far end down the bench.
-  const length = drawnLengthOf(segment);
+  const length = drawnLengthOf(segment, board);
   const active = shapeIdOf(shape);
 
   // The Length bar reaches well past the leg's own gap. Stopping at the gap
   // (192 mm on a short hop between cage plates) left no way to sketch a beam
   // carrying on past the next optic, which is half of what the control is for.
   // A whole 600 mm board is always in reach; a long leg gets 3× its own gap.
-  const maxLength = Math.max(Math.ceil(naturalLengthOf(segment) * 3 / 50) * 50, 600);
+  const maxLength = Math.max(Math.ceil(naturalLengthOf(segment, board) * 3 / 50) * 50, 600);
 
   const [drag, setDrag] = useState({ x: 0, y: 0 });
   const dragFrom = useRef<{ x: number; y: number } | null>(null);

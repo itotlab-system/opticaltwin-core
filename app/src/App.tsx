@@ -12,6 +12,7 @@ import type { SegmentShape } from "./beamShape";
 import ProjectGallery from "./ui/ProjectGallery";
 import Toggles from "./ui/Toggles";
 import CalloutLayer from "./ui/CalloutLayer";
+import PhotoBuilder from "./ui/PhotoBuilder";
 import FigureExportDialog, {
   DEFAULT_FIGURE_SETTINGS,
   type FigureExportSettings,
@@ -40,6 +41,8 @@ import type {
   PinAnnotation,
   ProjectData,
   ProjectSummary,
+  LaserOption,
+  NewProjectStart,
   Template,
 } from "./types";
 import { EMITTER_TYPES } from "./types";
@@ -155,9 +158,11 @@ function EyeIcon({ off = false }: { off?: boolean }) {
 }
 
 export default function App() {
-  const { t, setBgProject } = useSettings();
+  const { t, setBgProject, editorName } = useSettings();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [laserAssets, setLaserAssets] = useState<LaserOption[]>([]);
+  const [defaultBeamHeight, setDefaultBeamHeight] = useState(100);
   const [current, setCurrent] = useState<string | null>(null);   // null = gallery
   const [data, setData] = useState<ProjectData | null>(null);
   // Mirrors `data` for the debounced saves, which run outside render and would
@@ -182,6 +187,9 @@ export default function App() {
   const [browsingParts, setBrowsingParts] = useState(false);
   const [status, setStatus] = useState("");
   const [renderMode, setRenderMode] = useState<"lo" | "hi">("lo");
+  // The "build from a photo" screen, over the editor.
+  const [photoOpen, setPhotoOpen] = useState(false);
+  useEffect(() => { if (!current) setPhotoOpen(false); }, [current]);
   // Which beam leg is being edited, straight in the 3D viewport.
   const [selectedSegment, setSelectedSegment] = useState<BeamSegment | null>(null);
   const [showOutliner, setShowOutliner] = useState(true);
@@ -214,8 +222,10 @@ export default function App() {
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
 
   // Added:
-  // The user manually types the name shown on newly created pins.
-  const [pinUserName, setPinUserName] = useState("");
+  // The user manually types the name shown on newly created pins. It starts
+  // as the name edits are recorded under, and follows it when that changes.
+  const [pinUserName, setPinUserName] = useState(editorName);
+  useEffect(() => setPinUserName(editorName), [editorName]);
 
   // Added:
   // Selected color for newly created pins.
@@ -241,12 +251,12 @@ export default function App() {
   // it back, so it must not be replaced on re-render.
   const anchorStore = useRef(new AnchorStore()).current;
 
-  useEffect(() => { refreshGallery(); }, []);
-
   async function refreshGallery() {
     const r = await api.listProjects();
     setProjects(r.projects);
     setTemplates(r.templates);
+    setLaserAssets(r.lasers ?? []);
+    if (r.defaultBeamHeight) setDefaultBeamHeight(r.defaultBeamHeight);
   }
 
   // A leg that no longer exists (parts moved, a part was deleted) must not
@@ -285,6 +295,10 @@ export default function App() {
       setSelectedCalloutId(null);
       setRenderMode("lo");
 
+      // Every time the gallery is shown, not only on first load: coming back
+      // from a bench, its card must show the edit just made (time, who, and
+      // the redrawn thumbnail keyed on that time), not the list from before.
+      refreshGallery();
       return;
     }
 
@@ -318,11 +332,14 @@ export default function App() {
   // `folder` is the gallery tab that was open — a project made while standing
   // in a folder is filed there. Filed before the gallery refreshes, so the card
   // never flashes up unfiled.
-  async function createProject(name: string, template: string, folder = "") {
-    const r = await api.createProject(name, template);
+  async function createProject(
+    name: string, template: string, folder = "", start: NewProjectStart = {},
+  ) {
+    const r = await api.createProject(name, template, start);
     if (folder) await api.setProjectMeta(r.name, { folder });
     await refreshGallery();
     openProject(r.name);
+    if (template === "from_photo") setPhotoOpen(true);
   }
 
   async function deleteProject(name: string) {
@@ -951,7 +968,7 @@ export default function App() {
   function handleStartPlacing() {
     setPinMode(false);
     setIsPlacing(true);
-    setStatus("Click on the breadboard to place the new component. (Esc to cancel)");
+    setStatus(t("placing_hint"));
   }
 
   /** A tile in the catalogue: select it and go straight into placing. */
@@ -961,13 +978,26 @@ export default function App() {
     handleStartPlacing();
   }
 
-  async function onPlace(point: THREE.Vector3) {
+  async function onFold(name: string, turn: "left" | "right") {
+    if (!current) return;
+    await flushPendingSave();
+    try {
+      await applyMove(await api.foldBeam(current, name, turn, renderMode));
+      setStatus(t("folded", { name }));
+    } catch {
+      setStatus(t("fold_failed"));
+    }
+  }
+
+  async function onPlace(point: THREE.Vector3, snap = true) {
     if (!current || !asset) return;
     setIsPlacing(false);
-    const r = await api.addComponent(current, asset, point.x, point.y);
+    const r = await api.addComponent(current, asset, point.x, point.y, snap);
     const d = await api.getProject(current, renderMode);
     setData(d); setSelection([r.name]);
-    setStatus(t("components_n", { n: d.components.length }));
+    setStatus(r.snapped
+      ? t("placed_on_beam")
+      : t("components_n", { n: d.components.length }));
   }
 
   // Removes everything currently selected — one part, or every member of a
@@ -1115,6 +1145,8 @@ export default function App() {
         <ProjectGallery
           projects={projects}
           templates={templates}
+          lasers={laserAssets}
+          defaultBeamHeight={defaultBeamHeight}
           onOpen={openProject}
           onCreate={createProject}
           onDelete={deleteProject}
@@ -1283,6 +1315,13 @@ export default function App() {
           </button>
         </div>
         <button
+          className="ghost" data-testid="open-photo"
+          onClick={() => setPhotoOpen(true)}
+          title={t("photo_title")}
+        >
+          {t("photo_button")}
+        </button>
+        <button
           className="iconbtn ghost"
           onClick={() => setFigureExport(figureExport ?? DEFAULT_FIGURE_SETTINGS)}
           disabled={!viewportReady}
@@ -1383,6 +1422,7 @@ export default function App() {
               beamEditor={selectedSegment && (
                 <SegmentPopover
                   segment={selectedSegment}
+                  board={data?.board.bbox}
                   onShape={onShapeSegment}
                   onClose={() => setSelectedSegment(null)}
                 />
@@ -1401,6 +1441,7 @@ export default function App() {
               onPlace={isPlacing ? onPlace : undefined}
               onMove={onMove}
               onMoveMany={onMoveMany}
+              onFold={onFold}
               pins={pins}
               pinMode={pinMode}
               selectedPinId={selectedPinId}
@@ -1463,6 +1504,22 @@ export default function App() {
           )}
         </aside>
       </div>
+
+      {photoOpen && current && data && (
+        <PhotoBuilder
+          project={current}
+          data={data}
+          renderMode={renderMode}
+          onClose={() => setPhotoOpen(false)}
+          onBuilt={(payload) => {
+            setData(payload); setSelection([]);
+            setStatus(t("components_n", { n: payload.components.length }));
+          }}
+          onBoardModel={async (asset) => {
+            setData(await api.updateBoardModel(current, asset, renderMode));
+          }}
+        />
+      )}
 
       {figureExport && (
         <FigureExportDialog

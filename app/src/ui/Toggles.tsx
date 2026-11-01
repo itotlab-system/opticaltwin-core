@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useSettings } from "../settings";
+import EditorNamePrompt from "./EditorNamePrompt";
 import type { ViewportBg } from "../settings";
 
 // The three canvas backgrounds, in order from darkest to lightest (#156).
@@ -11,9 +13,23 @@ const BACKGROUNDS: Exclude<ViewportBg, "auto">[] = ["dark", "gray", "light"];
 export default function Toggles({ showBg = true }: { showBg?: boolean }) {
   const {
     theme, lang, toggleTheme, toggleLang, resolvedBg, setViewportBg, t,
+    editorName,
   } = useSettings();
+  const [renaming, setRenaming] = useState(false);
   return (
     <>
+      {/* Who edits are recorded as. Shown so a shared lab PC left signed in as
+          the previous student is noticed, and changed, before editing. */}
+      {editorName && (
+        <button
+          className="ghost toggle editor-chip"
+          onClick={() => setRenaming(true)}
+          title={t("editor_name_change")}
+        >
+          {editorName}
+        </button>
+      )}
+      {renaming && <EditorNamePrompt onClose={() => setRenaming(false)} />}
       {showBg && (
         <div className="bg-toggle" role="group" aria-label={t("viewport_bg")}>
           {BACKGROUNDS.map((bg) => (
