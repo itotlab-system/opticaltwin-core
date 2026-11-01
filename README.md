@@ -1,59 +1,65 @@
 # OpticalTwin
 
-[![CI](https://github.com/itotlab-system/opticaltwin-core/actions/workflows/ci.yml/badge.svg)](https://github.com/itotlab-system/opticaltwin-core/actions/workflows/ci.yml)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21594827.svg)](https://doi.org/10.5281/zenodo.21594827)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776ab.svg)](https://www.python.org/)
-[![Node 20](https://img.shields.io/badge/Node-20-5fa04e.svg)](https://nodejs.org/)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="app/public/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="app/public/logo.png">
+    <img src="app/public/logo.png" alt="OpticalTwin" width="460">
+  </picture>
+</p>
 
-Interactive 3D viewer and editor for **optical laboratory setups**, built on
-[OpenUSD](https://openusd.org/) and [React Three Fiber](https://r3f.docs.pmnd.rs/).
+<p align="center">
+  <strong>Plan, arrange, and share optical bench layouts in 3D.</strong><br>
+  OpticalTwin is a browser-based editor for real-sized optical components and
+  editable OpenUSD scenes. Beam paths show geometric layout and direction.
+</p>
 
-Open a shared setup in a browser, place real optical components at physically
-correct positions on a breadboard, check fit, spacing and alignment, and discuss
-the layout with colleagues — without needing to be in the optics room.
+<p align="center">
+  <a href="https://github.com/itotlab-system/opticaltwin-core/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/itotlab-system/opticaltwin-core/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://doi.org/10.5281/zenodo.21594827"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.21594827.svg"></a>
+  <a href="https://opensource.org/licenses/Apache-2.0"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/License-Apache_2.0-blue.svg"></a>
+  <a href="https://www.python.org/"><img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776ab.svg"></a>
+  <a href="https://nodejs.org/"><img alt="Node 20" src="https://img.shields.io/badge/Node-20-5fa04e.svg"></a>
+</p>
 
-![A 4f imaging setup in OpticalTwin: fiber laser, collimating optics, a cage-mounted lens pair, an SLM and a camera on a breadboard, with the beam drawn in green](docs/media/bench-green.png)
+## Demo
 
-<sub>A 4f imaging layout. Rendered with manufacturer CAD imported — a fresh clone
-shows procedurally generated shapes at the same dimensions until you import CAD
-of your own (see [Using manufacturer CAD models](#using-manufacturer-cad-models)).
-The beam is a **planning line**, not a simulation.</sub>
+[![Open the OpticalTwin video demo](docs/media/bench-green.png)](https://drive.google.com/file/d/15PWpWyUp3fIUevIdAOsUyAmhY24BQnxK/view?usp=sharing)
 
-- **Stack:** React + React Three Fiber (frontend) · Flask + OpenUSD (backend) · Git (sync)
-- **Conventions:** millimetres · Z-up · optical axis along +X
-- **License:** Apache-2.0
+<p align="center">
+  <a href="https://drive.google.com/file/d/15PWpWyUp3fIUevIdAOsUyAmhY24BQnxK/view?usp=sharing">▶ Watch the demo video on Google Drive</a>
+</p>
+
+## What you can do
+
+- Arrange real-sized optical components on a breadboard and check fit, spacing,
+  and alignment.
+- Follow and fold beam paths geometrically through mirrors and beamsplitters.
+- Group, duplicate, label, and export layouts for discussion or figures.
+- Save setups as text-based OpenUSD scenes that can be reviewed and shared with
+  Git.
+
+Built with [OpenUSD](https://openusd.org/), Flask, React, and
+[React Three Fiber](https://r3f.docs.pmnd.rs/). The scene uses millimetres, Z-up,
+and an optical axis along +X.
 
 ## Who this is for
 
-Research groups who build optical setups on breadboards and need to plan, share
-and argue about them away from the bench — a supervisor reviewing a student's
-layout, a group deciding whether a new arm will fit before ordering parts, or
-anyone who wants a figure of a setup for a paper without rebuilding it in CAD.
+OpticalTwin is for research groups who build optical setups on breadboards and
+need to plan and discuss them away from the bench. It can help a supervisor
+review a student's layout, a group check whether a new arm will fit before
+ordering parts, or an author prepare a setup figure without rebuilding it in CAD.
 
 It is most useful to a lab that already owns the parts: components are described
 with real dimensions, so what fits on screen fits on the table.
 
 ## Scope
 
-OpticalTwin is a tool for **layout and planning**, not an optical design suite.
-Beam paths are drawn as straight planning lines between components; there is no
-ray tracing, refraction or diffraction modelling.
+OpticalTwin supports **layout and planning**. Beam paths are geometric guides
+between components. The app does not calculate refraction, focusing, diffraction,
+ray tracing, tolerancing, or aberrations.
 
-This is a deliberate boundary, not a missing feature. Zemax, Code V and
-OpticStudio do optical design far better than we could, and the tool is useful
-precisely because it stays small enough to open, edit and share in a browser.
-
-**What it does:** place components at real positions and dimensions · check fit,
-spacing and alignment · fold beams geometrically at mirrors and beamsplitters ·
-group, copy and rearrange parts · keep everything in text files that diff and
-merge in git · share a setup with the group over a LAN.
-
-**What it does not do:** refraction · focusing · diffraction · ray tracing ·
-tolerancing · aberration analysis · anything else that belongs in optical design
-software.
-
-## What it looks like
+## Screenshots
 
 The same bench from above, and viewed from the top. Beam colour follows the
 source's `optics:wavelength_nm`, so a 633 nm source draws red and a 532 nm source
@@ -64,9 +70,9 @@ draws green.
 | ![The same bench with a 633 nm source, beam drawn in red](docs/media/bench-red.png) | ![Top-down view of the layout, showing the beam folding through 90° at the beamsplitter](docs/media/layout-top.png) |
 | Wavelength drives the beam colour. | Top-down, where spacing and alignment are easiest to judge. |
 
-The 90° turn at the beamsplitter is a **geometric fold** — the tracer reflects
-the line off components that change direction and passes it through the ones that
-do not. There is no physics behind it beyond that.
+The 90° turn at the beamsplitter is a **geometric fold**. The tracer reflects the
+line off components that change direction and passes it through the ones that do
+not. This describes layout geometry, not optical physics.
 
 ---
 
@@ -75,13 +81,13 @@ do not. There is no physics behind it beyond that.
 Requires **Python 3.12** and **Node 20**.
 
 ```bash
-# 1 — Python backend
+# 1: Python backend
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-app.txt
 python setup_projects.py    # generates components/ and an example project
 python server.py            # http://localhost:8000
 
-# 2 — React frontend (separate terminal)
+# 2: React frontend (separate terminal)
 cd app
 npm install
 npm run dev                 # http://localhost:5173
@@ -89,13 +95,13 @@ npm run dev                 # http://localhost:5173
 
 Open **http://localhost:5173/**. Vite proxies `/api` and `/model` to the backend.
 
-For a production build, run `npm run build` in `app/` — the backend then serves
-`app/dist/` directly on port 8000, and the frontend dev server is not needed.
+For a production build, run `npm run build` in `app/`. The backend then serves
+`app/dist/` directly on port 8000, so the frontend dev server is not needed.
 
 ### The component library is generated
 
 `components/` is **not** checked in. `python setup_projects.py` builds the
-catalogue from the `make_*` generators in `optics_lib.py` — lenses, mirrors,
+catalogue from the `make_*` generators in `optics_lib.py`: lenses, mirrors,
 beamsplitters, irises, detectors and so on, dimensioned to common
 Ø1″ / 30 mm-cage standards. Re-run it any time to rebuild.
 
@@ -109,8 +115,8 @@ STEP models remain the property of their manufacturer, and their licence terms
 generally permit use in your own design work but not redistribution.
 
 What ships instead is a manifest of *pointers*. `cad/SOURCES.toml` lists the
-parts the lab's own component library was built from — part number, vendor and
-catalogue link — and `tools/fetch_cad.py` reads it:
+parts the lab's own component library was built from. It records part numbers,
+vendors and catalogue links, and `tools/fetch_cad.py` reads it:
 
 ```bash
 python tools/fetch_cad.py --list      # what the manifest holds, and what is missing
@@ -128,7 +134,7 @@ python cad_importer.py path/to/PART.step --type lens --lod both \
     --component-name MyPart
 ```
 
-`cad/SOURCES.toml` is a good starting list even if your bench differs — edit it
+`cad/SOURCES.toml` is a good starting list even if your bench differs. Edit it
 to match the parts you actually own. See `docs/dev/ASSETS.md` for the full
 conversion and optimisation guide.
 
@@ -143,7 +149,7 @@ OT_PASSWORD='your-password' python server.py
 
 Also set `OT_SESSION_SECRET` to a fixed random value in any persistent
 deployment, otherwise sessions are invalidated on every restart. The server
-speaks plain HTTP — put it behind a reverse proxy with TLS if it is reachable
+speaks plain HTTP. Put it behind a reverse proxy with TLS if it is reachable
 beyond a LAN.
 
 `OT_PASSWORD` is one shared secret, not a user system: there are no accounts, no
@@ -157,12 +163,12 @@ before deploying anywhere. **Do not expose this to the public internet.**
 USD is the single source of truth. Each optic is its own `.usda` asset in
 `components/`; a setup in `projects/<name>/setup.usda` pulls them in via USD
 **References**, so one asset can be placed many times. Every edit in the browser
-is written straight back to the `.usda` file — the editor holds no hidden state,
+is written straight back to the `.usda` file. The editor holds no hidden state,
 and setups are plain text, so they diff and merge in git.
 
 ```
 OpticalTwin/
-├── server.py            # Flask backend — reads/writes USD, serves the REST API
+├── server.py            # Flask backend: reads/writes USD, serves the REST API
 ├── optics_lib.py        # component generators and setup helpers
 ├── templates.py         # named setup recipes
 ├── setup_projects.py    # scaffolds projects/<name>/setup.usda from a template
@@ -178,8 +184,8 @@ OpticalTwin/
 ```
 
 Sync between people is plain git: commit `projects/<name>/` and pull each
-other's. There is no database and no lock-in — if OpticalTwin disappeared
-tomorrow, the setups are still readable USD.
+other's changes. There is no database or lock-in. Setups remain readable USD
+files even if OpticalTwin is no longer available.
 
 ## Tests
 
@@ -209,7 +215,7 @@ need something on this list sooner, or something that is not on it.
 ## Contributing
 
 Issues, questions and pull requests are welcome. Please read
-[CONTRIBUTING.md](CONTRIBUTING.md) first — this repository is a periodic export
+[CONTRIBUTING.md](CONTRIBUTING.md) first. This repository is a periodic export
 of the lab's development repository, which affects how pull requests are merged
 and credited. [CHANGELOG.md](CHANGELOG.md) records what changed in each release.
 
@@ -225,7 +231,7 @@ If you use OpticalTwin in your research, please cite it as:
 
 > Kumano, K., Yoshino, K., Goto, M., & Matsuo, Y. (2026).
 > *OpticalTwin: a browser-based 3D viewer and editor for optical laboratory setups*
-> (Version 1.0.0) [Computer software].
+> (Version 1.1.0) [Computer software].
 > Zenodo. https://doi.org/10.5281/zenodo.21594827
 
 BibTeX:
@@ -235,14 +241,14 @@ BibTeX:
   author  = {Kumano, Kai and Yoshino, Kota and Goto, Masato and Matsuo, Yuto},
   title   = {{OpticalTwin: a browser-based 3D viewer and editor for optical laboratory setups}},
   year    = {2026},
-  version = {1.0.0},
+  version = {1.1.0},
   doi     = {10.5281/zenodo.21594827},
   publisher = {Zenodo},
   url     = {https://github.com/itotlab-system/opticaltwin-core}
 }
 ```
 
-See `CITATION.cff` for machine-readable metadata — GitHub renders it as a
+See `CITATION.cff` for machine-readable metadata. GitHub renders it as a
 "Cite this repository" button. The DOI above is the concept DOI and always
 resolves to the latest release, so it stays valid as versions change.
 
