@@ -50,7 +50,6 @@ from typing import Any
 
 from scipy.spatial import ConvexHull, QhullError
 from OCP.IFSelect import IFSelect_ReturnStatus
-from OCP.STEPControl import STEPControl_Reader
 from OCP.STEPCAFControl import STEPCAFControl_Reader
 from OCP.TopoDS import TopoDS_Shape, TopoDS_Compound
 from OCP.BRep import BRep_Builder
@@ -322,41 +321,6 @@ def create_optics_attribute(prim, name: str, value: Any) -> None:
     else:
         value_type = Sdf.ValueTypeNames.String
     prim.CreateAttribute(f"optics:{name}", value_type).Set(value)
-
-
-def load_step(step_path: Path) -> TopoDS_Shape:
-    """
-    STEPファイルを読み込み、OpenCascadeのShapeとして返す。
-    """
-
-    step_path = step_path.resolve()
-
-    if not step_path.exists():
-        raise FileNotFoundError(f"STEPファイルが見つかりません: {step_path}")
-
-    if step_path.suffix.lower() not in {".step", ".stp"}:
-        raise ValueError(f"STEPファイルではありません: {step_path}")
-
-    reader = STEPControl_Reader()
-
-    status = reader.ReadFile(str(step_path))
-
-    if status != IFSelect_ReturnStatus.IFSelect_RetDone:
-        raise RuntimeError(f"STEPファイルの読み込みに失敗しました: {step_path}")
-
-    transferred_count = reader.TransferRoots()
-
-    if transferred_count == 0:
-        raise RuntimeError(
-            f"STEPファイルからShapeを変換できませんでした: {step_path}"
-        )
-
-    shape = reader.OneShape()
-
-    if shape.IsNull():
-        raise RuntimeError(f"読み込んだShapeが空です: {step_path}")
-
-    return shape
 
 
 def combine_step_shapes(shapes: list[TopoDS_Shape]) -> TopoDS_Shape:
@@ -728,7 +692,6 @@ def transfer_mesh_colors(
     reference_centers = []
     reference_colors = []
     for part in colored_reference:
-        points = normalized(reference_points)
         # Convert this part through the global reference bounds.
         all_minimum = reference_points.min(axis=0)
         all_size = np.maximum(reference_points.max(axis=0) - all_minimum, 1e-9)

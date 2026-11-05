@@ -197,6 +197,27 @@ button.ghost { background: transparent; }
 .outliner { width: 100%; flex: 1; min-height: 0; border: 0;
   background: var(--panel); overflow-y: auto; }
 .viewport { flex: 1; min-width: 0; position: relative; }
+.lod-loading {
+  position: absolute; inset: 0; z-index: 20;
+  display: grid; place-items: center;
+  background: rgb(0 0 0 / 38%); color: #fff;
+  pointer-events: all;
+}
+.lod-loading-card {
+  width: min(290px, calc(100% - 40px)); padding: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  animation: lod-card-in .2s ease-out both;
+}
+.lod-ring {
+  width: 48px; height: 48px; border: 4px solid rgb(255 255 255 / 26%);
+  border-top-color: #27e879; border-right-color: #27e879;
+  border-radius: 50%; filter: drop-shadow(0 0 6px rgb(39 232 121 / 65%));
+  animation: lod-ring-spin .8s linear infinite;
+}
+.lod-loading-copy { display: grid; gap: 5px; text-align: center; }
+.lod-loading-copy span { color: #fff; font-size: 13px; font-weight: 500; }
+@keyframes lod-ring-spin { to { transform: rotate(360deg); } }
+@keyframes lod-card-in { from { opacity: 0; transform: translateY(5px) scale(.98); } to { opacity: 1; transform: none; } }
 .inspector { width: 100%; flex: 1; min-height: 0; border: 0;
   background: var(--panel); overflow-y: auto; }
 
@@ -632,45 +653,6 @@ button.big { padding: 10px 16px; font-size: 14px; }
   border-radius: 4px; padding: 1px 5px;
   font-family: monospace;
 }
-
-/* ---- physics panel (paraxial simulation results) ---- */
-.physics-panel {
-  border-top: 1px solid var(--line);
-  padding-bottom: 16px;
-}
-.physics-block {
-  padding: 4px 16px 8px;
-  border-bottom: 1px solid var(--line);
-}
-.physics-seg-label {
-  font-size: 10px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: .6px; color: var(--accent); padding: 8px 0 4px;
-}
-.physics-row {
-  display: flex; justify-content: space-between; align-items: baseline;
-  font-size: 12px; padding: 4px 0;
-  border-bottom: 1px solid var(--line);
-}
-.physics-row:last-child { border-bottom: none; }
-.physics-row.final { padding-top: 8px; font-weight: 600; }
-.physics-label { color: var(--muted); flex: 1; }
-.physics-value { font-variant-numeric: tabular-nums; color: var(--text); }
-.physics-table {
-  width: 100%; border-collapse: collapse; font-size: 11px; margin: 6px 0;
-}
-.physics-table th {
-  text-align: left; color: var(--muted); font-weight: 400;
-  padding: 3px 4px; border-bottom: 1px solid var(--line);
-}
-.physics-table td {
-  padding: 5px 4px; vertical-align: top;
-  border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums;
-}
-.physics-table tr:last-child td { border-bottom: none; }
-.physics-table .row-lens td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
-.physics-table .el-name { display: block; font-weight: 500; }
-.physics-table .el-type { display: block; font-size: 9px; color: var(--muted); margin-top: 1px; }
-.physics-table .sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
 
 /* ---- 3D pin annotation labels ---- */
 

@@ -29,7 +29,7 @@ DEFAULT_PROJECTS = [
 
 # Templates built by copying a stored setup.usda rather than replaying a Python
 # recipe -- a new project starts from a real, hand-tuned bench with no stale
-# baked-in beam path, which the original recipes drifted away from (see #88).
+# baked-in beam path, which the original recipes drifted away from.
 #
 # The stored setups live in project_templates/, NOT in projects/. This used to
 # clone `projects/project1`, and lab members renamed that project away through
@@ -82,7 +82,7 @@ def _create_project_from_clone(name, template, source_name, label,
 
 
 def duplicate_project(source_name, name, projects_dir=None, overwrite=False):
-    """Copy a whole project folder to a new name (#155).
+    """Copy a whole project folder to a new name.
 
     Everything comes along -- setup.usda, notes.md, anything else a team put
     in the folder. Safe for the same reason CLONE_TEMPLATES is: source and

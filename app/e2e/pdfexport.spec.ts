@@ -3,7 +3,7 @@ import fs from "node:fs";
 import zlib from "node:zlib";
 import { loginIfNeeded } from "./helpers";
 
-// Issue #255: the figure export can also write a PDF — one page, the composited
+// The figure export can also write a PDF — one page, the composited
 // figure (bench + callout labels) as a lossless image, sized so the resolution
 // multiplier is the print density.
 //

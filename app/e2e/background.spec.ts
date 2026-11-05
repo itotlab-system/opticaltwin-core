@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-// Issue #156: the viewport background is pickable (dark / gray / light)
+// The viewport background is pickable (dark / gray / light)
 // independently of the UI theme, so a mid-gray keeps black-anodized mounts and
 // silver optics readable at the same time.
 

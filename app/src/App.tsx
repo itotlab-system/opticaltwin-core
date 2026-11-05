@@ -86,7 +86,7 @@ function createPinId() {
 }
 
 // What Ctrl+C holds: component names *and* the project they were copied from,
-// since a paste can land in a different project (#155). Kept in localStorage
+// since a paste can land in a different project. Kept in localStorage
 // so it also survives a reload or a second tab — the same place the browser's
 // own clipboard would put it.
 type Clipboard = { project: string; names: string[] };
@@ -187,6 +187,7 @@ export default function App() {
   const [browsingParts, setBrowsingParts] = useState(false);
   const [status, setStatus] = useState("");
   const [renderMode, setRenderMode] = useState<"lo" | "hi">("lo");
+  const [lodLoading, setLodLoading] = useState(false);
   // The "build from a photo" screen, over the editor.
   const [photoOpen, setPhotoOpen] = useState(false);
   useEffect(() => { if (!current) setPhotoOpen(false); }, [current]);
@@ -371,24 +372,31 @@ export default function App() {
     const r = await api.renameProject(name, newName);
     moveViewportBg(name, r.name);
     await refreshGallery();
-    // A pending copy still points at the old folder; follow it across (#207).
+    // A pending copy still points at the old folder; follow it across.
     const clip = readClipboard();
     if (clip?.project === name) writeClipboard({ ...clip, project: r.name });
     if (current === name) setCurrent(r.name);
   }
 
   async function toggleRenderMode() {
-    if (!current) return;
+    if (!current || lodLoading) return;
     const next = renderMode === "lo" ? "hi" : "lo";
     setIsPlacing(false);
+    setLodLoading(true);
     setStatus(`Loading ${next.toUpperCase()} models…`);
-    const d = await api.getProject(current, next);
-    setRenderMode(next);
-    setData(d);
-    // Hi/lo swaps can drop parts that have no model at that detail level.
-    const present = new Set(d.components.map((c) => c.name));
-    setSelection((prev) => prev.filter((name) => present.has(name)));
-    setStatus(`${next.toUpperCase()} · ${d.components.length} components`);
+    try {
+      const d = await api.getProject(current, next);
+      setRenderMode(next);
+      setData(d);
+      // Hi/lo swaps can drop parts that have no model at that detail level.
+      const present = new Set(d.components.map((c) => c.name));
+      setSelection((prev) => prev.filter((name) => present.has(name)));
+      setStatus(`${next.toUpperCase()} · ${d.components.length} components`);
+    } catch {
+      setStatus(`Could not load ${next.toUpperCase()} models`);
+    } finally {
+      setLodLoading(false);
+    }
   }
 
   async function handleSnapshot(settings: FigureExportSettings) {
@@ -520,17 +528,16 @@ export default function App() {
     return i > 0 ? sorted[i - 1] : null;
   })();
 
-  // Debounce a save, remembering the work so it can also be flushed on demand.
-  // Holding the timer means a whole drag or a burst of arrow-key nudges lands
-  // as one request — and therefore as one undo step.
-  function scheduleSave(run: () => Promise<void>) {
+  // Debounce bursts such as arrow-key nudges into one request and undo step.
+  // Pointer drags pass a zero delay when their transform ends.
+  function scheduleSave(run: () => Promise<void>, delayMs = 300) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     pendingSave.current = run;
     saveTimer.current = window.setTimeout(() => {
       saveTimer.current = null;
       pendingSave.current = null;
       void run();
-    }, 300);
+    }, delayMs);
   }
 
   async function flushPendingSave() {
@@ -564,7 +571,7 @@ export default function App() {
     return next;
   }
 
-  function pushUpdate(comp: Component) {
+  function pushUpdate(comp: Component, immediate = false) {
     scheduleSave(async () => {
       setStatus(t("saving", { name: comp.name }));
 
@@ -581,7 +588,7 @@ export default function App() {
       await applyMove(updated);
       setStatus(t("saved", { name: comp.name }));
 
-    });
+    }, immediate ? 0 : 300);
   }
 
   function patchLocal(name: string, fields: Partial<Component>): Component | null {
@@ -643,6 +650,7 @@ export default function App() {
     rotX: number,
     rotY: number,
     rotZ: number,
+    immediate = false,
   ) {
     const u = patchLocal(name, {
       x: Math.round(x * 2) / 2,
@@ -652,7 +660,7 @@ export default function App() {
       rotY: Math.round(rotY),
       rotZ: Math.round(rotZ),
     });
-    if (u) pushUpdate(u);
+    if (u) pushUpdate(u, immediate);
   }
 
   // ----- multi-selection & groups -----
@@ -709,7 +717,7 @@ export default function App() {
     });
   }
 
-  function onMoveMany(updates: ComponentUpdate[]) {
+  function onMoveMany(updates: ComponentUpdate[], immediate = false) {
     if (!current || updates.length === 0) return;
     const rounded = updates.map(roundUpdate);
     patchLocalMany(rounded);
@@ -720,7 +728,7 @@ export default function App() {
       await applyMove(updated);
       setStatus(t("saved_n", { n: rounded.length }));
 
-    });
+    }, immediate ? 0 : 300);
   }
 
   function handleSelect(name: string | null, additive = false) {
@@ -1222,6 +1230,7 @@ export default function App() {
         <button
           className={`toggle ${renderMode === "hi" ? "active" : "ghost"}`}
           onClick={toggleRenderMode}
+          disabled={lodLoading}
           title="Switch every component in this project between low and high detail"
         >
           LOD: {renderMode.toUpperCase()}
@@ -1411,6 +1420,16 @@ export default function App() {
           />
         )}
         <div className="viewport">
+          {lodLoading && (
+            <div className="lod-loading" role="status" aria-live="polite">
+              <div className="lod-loading-card">
+                <span className="lod-ring" aria-hidden="true" />
+                <div className="lod-loading-copy">
+                  <span>Loading high models…</span>
+                </div>
+              </div>
+            </div>
+          )}
           {data && (
             <Viewport
               ref={viewportRef}

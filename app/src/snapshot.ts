@@ -1,4 +1,4 @@
-// Filename + download helpers for the viewport "Snapshot" button (issue #92).
+// Filename + download helpers for the viewport "Snapshot" button.
 
 const UNSAFE_FILENAME_CHARS = /[/\\:*?"<>|]/g;
 

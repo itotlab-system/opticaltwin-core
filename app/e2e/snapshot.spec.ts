@@ -2,9 +2,9 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import zlib from "node:zlib";
 
-// Issue #92: a "Snapshot" button in the toolbar downloads the current
+// A "Snapshot" button in the toolbar downloads the current
 // viewport as a PNG named "<project>-<timestamp>.png".
-// Issue #154: the X/Y/Z axis triad in the top-left corner is editor furniture
+// The X/Y/Z axis triad in the top-left corner is editor furniture
 // and must not appear in that PNG.
 
 type Rgb = [number, number, number];
@@ -130,7 +130,7 @@ test("snapshot button downloads a non-blank PNG named after the project", async 
     expect(png.width).toBeGreaterThan(100);
     expect(png.height).toBeGreaterThan(100);
 
-    // #154: no axis triad in the captured image.
+    // No axis triad in the captured image.
     expect(findAxisColorPixels(png)).toEqual([]);
   } finally {
     // The backend persists projects as real files under projects/<name>/ —

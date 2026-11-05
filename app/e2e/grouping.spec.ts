@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import * as THREE from "three";
 
-// Issue #114 / #115 / #116: PowerPoint-style grouping — Ctrl+click to
+// PowerPoint-style grouping — Ctrl+click to
 // multi-select, Ctrl+G to group, move the group as one rigid body, and find
 // the group still there after a reload.
 

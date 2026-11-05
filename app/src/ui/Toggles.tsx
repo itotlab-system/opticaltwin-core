@@ -3,7 +3,7 @@ import { useSettings } from "../settings";
 import EditorNamePrompt from "./EditorNamePrompt";
 import type { ViewportBg } from "../settings";
 
-// The three canvas backgrounds, in order from darkest to lightest (#156).
+// The three canvas backgrounds, in order from darkest to lightest.
 const BACKGROUNDS: Exclude<ViewportBg, "auto">[] = ["dark", "gray", "light"];
 
 // Theme (dark/light) + language (EN/日本語) + viewport background switches
