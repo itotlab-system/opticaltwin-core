@@ -20,6 +20,7 @@ import secrets
 import threading
 import datetime
 import urllib.parse
+from collections import OrderedDict
 from flask import Flask, jsonify, request, send_from_directory, abort, session
 from pxr import Usd, UsdGeom, Gf, Sdf
 
@@ -41,6 +42,9 @@ Z_MAX_MM = 300.0        # component height ceiling; mirrors the app's drag limit
 os.makedirs(BUILD_DIR, exist_ok=True)
 _CAD_CATALOG_SYNC_LOCK = threading.Lock()
 _ROD_SHOULDER_CACHE = {}
+_MOVE_ASSET_CACHE_LIMIT = 64
+_MOVE_ASSET_CACHE = OrderedDict()
+_MOVE_ASSET_CACHE_LOCK = threading.Lock()
 
 
 def _sync_cad_catalog_group(
@@ -285,13 +289,13 @@ def _sync_cad_catalog():
             source_axis,
         )
 
-# New projects only offer an empty breadboard, or a clone of project1's
-# *current* 4f setup, for now (see #88): the demo templates (slm_imaging/
-# two_lens) bake a static beam path that goes stale as soon as components
-# move. tpl.TEMPLATES itself is untouched so existing tooling
-# (setup_projects.py) keeps working. setup_projects.CLONE_TEMPLATES supplies
-# the "4f_default" option, which is built by copying project1/setup.usda
-# rather than replaying the buggy recipe.
+# New projects only offer an empty breadboard, or a copy of a stored 4f setup:
+# the demo templates (slm_imaging/two_lens) bake a static beam path that goes
+# stale as soon as components move. tpl.TEMPLATES itself is untouched so
+# existing tooling (setup_projects.py) keeps working.
+# setup_projects.CLONE_TEMPLATES supplies the "4f_default" option, copied from
+# project_templates/4f_default/setup.usda rather than replayed from a recipe,
+# and offered only when that file exists (_clone_template_available).
 NEW_PROJECT_TEMPLATE_KEYS = ("blank",)
 BOARD_MODEL_ORDER = (
     "Breadboard/MB6060_M-Step.usda",
@@ -1612,7 +1616,7 @@ def _unique_component_name(stage, root, base, taken=()):
 
 
 # -------------------------------------------------------------------------
-# Undo / redo (#157)
+# Undo / redo
 #
 # Every editing step is recorded as a snapshot of the whole USD layer, taken
 # just before the change lands. The layers are small (8-54 kB of text, and
@@ -1691,7 +1695,7 @@ def _forget_history(name):
 
 
 def _rename_history(old, new):
-    """Carry a project's undo stack over to its new name (#207).
+    """Carry a project's undo stack over to its new name.
 
     The stacks are whole-layer snapshots, and a rename changes nothing inside
     the layer, so every recorded step is still valid under the new name.
@@ -2017,6 +2021,24 @@ PLACEMENT_ATTR_KEYS = (
 )
 
 
+def _move_asset_cache_get(key):
+    """Return cached immutable beam geometry and mark it as recently used."""
+    with _MOVE_ASSET_CACHE_LOCK:
+        cached = _MOVE_ASSET_CACHE.get(key)
+        if cached is not None:
+            _MOVE_ASSET_CACHE.move_to_end(key)
+        return cached
+
+
+def _move_asset_cache_put(key, value):
+    """Keep a bounded LRU of asset-local data used to retrace moves."""
+    with _MOVE_ASSET_CACHE_LOCK:
+        _MOVE_ASSET_CACHE[key] = value
+        _MOVE_ASSET_CACHE.move_to_end(key)
+        while len(_MOVE_ASSET_CACHE) > _MOVE_ASSET_CACHE_LIMIT:
+            _MOVE_ASSET_CACHE.popitem(last=False)
+
+
 def _project_components(stage, render_mode="lo", include_fixed=False, *, beam_only=False):
     if render_mode not in ("hi", "lo"):
         raise ValueError("render_mode must be 'hi' or 'lo'")
@@ -2049,13 +2071,19 @@ def _project_components(stage, render_mode="lo", include_fixed=False, *, beam_on
                 if render_mode == "hi":
                     continue
             else:
+                geometry_stat = os.stat(geometry_path)
                 geometry_key = (
                     os.path.realpath(geometry_path),
-                    os.path.getmtime(geometry_path),
+                    geometry_stat.st_mtime_ns,
+                    geometry_stat.st_size,
                     render_mode,
                     beam_only,
                 )
                 cached = asset_data_cache.get(geometry_key)
+                if cached is None and beam_only:
+                    cached = _move_asset_cache_get(geometry_key)
+                    if cached is not None:
+                        asset_data_cache[geometry_key] = cached
                 if cached is None:
                     asset_stage = Usd.Stage.Open(geometry_path)
                     if (
@@ -2081,14 +2109,15 @@ def _project_components(stage, render_mode="lo", include_fixed=False, *, beam_on
                         )
                         asset_primitives = _component_primitives(asset_stage, asset_root)
                         cached = (
-                            asset_stage, asset_root, asset_pose, asset_type_value,
-                            asset_attrs, asset_meshes, asset_primitives,
+                            asset_pose, asset_type_value, asset_attrs,
+                            asset_meshes, asset_primitives,
                         )
                         asset_data_cache[geometry_key] = cached
+                        if beam_only:
+                            _move_asset_cache_put(geometry_key, cached)
                 if geometry_key is not None:
                     (
-                        geometry_stage, geometry_root, model_pose, asset_type_value, attrs,
-                        meshes, primitives,
+                        model_pose, asset_type_value, attrs, meshes, primitives,
                     ) = cached
                     if asset_type_value is not None:
                         t = asset_type_value
@@ -2678,7 +2707,7 @@ def _unique_project_name(base):
 
 @app.post("/api/projects/<name>/duplicate")
 def duplicate_project(name):
-    """Copy a whole project under an auto-generated name (#155).
+    """Copy a whole project under an auto-generated name.
 
     Duplicating bench gives bench_copy, then bench_copy_2 -- the existing
     _copy suffix is counted on rather than stacked.
@@ -2733,7 +2762,7 @@ def update_project_meta(name):
 
 @app.post("/api/projects/<name>/rename")
 def rename_project(name):
-    """Rename a project folder (#207).
+    """Rename a project folder.
 
     The whole folder moves — setup.usda, notes.md, whatever else the team put
     there — so the relative `../../components/...` references inside the layer
@@ -2810,7 +2839,7 @@ def _step_history(name, take, keep, render_mode):
 
 @app.post("/api/projects/<name>/undo")
 def undo_project(name):
-    """Rewind one editing step (#157). Returns the restored scene."""
+    """Rewind one editing step. Returns the restored scene."""
     render_mode = (request.get_json(silent=True) or {}).get("renderMode", "lo")
     if render_mode not in ("hi", "lo"):
         abort(400, "renderMode must be hi or lo")
@@ -3682,7 +3711,7 @@ def fold_beam(name, comp):
 @app.post("/api/projects/<name>/components/duplicate")
 @records_history
 def duplicate_components(name):
-    """Copy components into a project — the paste half of copy & paste (#155).
+    """Copy components into a project — the paste half of copy & paste.
 
     Body: {names: [...], sourceProject?, offsetX?, offsetY?, renderMode?}
 
@@ -3693,7 +3722,7 @@ def duplicate_components(name):
     visibly beside the original.
 
     `sourceProject` copies out of another project instead of this one, which is
-    how a selection copied in project1 pastes into project2 (#155). Only this
+    how a selection copied in project1 pastes into project2. Only this
     project is written to (and so only its history records a step); the source
     is opened read-only.
     """
@@ -3970,197 +3999,6 @@ def pin_beam_node(name):
     stage.GetRootLayer().Save()
 
     return jsonify(ok=True)
-
-
-# -------------------------------------------------------------------------
-# Paraxial (ABCD) beam simulation
-# -------------------------------------------------------------------------
-
-def _find_components_on_segment(comps_by_name, pos_a, pos_b, tolerance=8.0):
-    """Components whose (x,y) lies on the segment from pos_a to pos_b.
-    Returns list of (t_along, name, comp) sorted by distance from pos_a,
-    excluding the endpoints themselves."""
-    ax, ay = pos_a[0], pos_a[1]
-    bx, by = pos_b[0], pos_b[1]
-    dx, dy = bx - ax, by - ay
-    length = math.sqrt(dx * dx + dy * dy)
-    if length < 1e-4:
-        return []
-    ux, uy = dx / length, dy / length
-    nx, ny = -uy, ux
-    result = []
-    for name, c in comps_by_name.items():
-        cx, cy = c["x"], c["y"]
-        t = (cx - ax) * ux + (cy - ay) * uy
-        perp = abs((cx - ax) * nx + (cy - ay) * ny)
-        if 1e-3 < t < length - 1e-3 and perp < tolerance:
-            result.append((t, name, c))
-    result.sort()
-    return result
-
-
-def _paraxial_segments(stage, comps_by_name, w0_mm=0.0025):
-    """Gaussian beam propagation via ABCD matrices along the beam path.
-
-    w0_mm: input beam waist radius in mm (default 0.0025 = 2.5 µm fiber tip).
-    Returns list of {pts, widths, wavelength, info} — widths are beam radii in mm.
-    info contains per-element physics stats computed entirely server-side.
-    """
-    # Per-segment wavelengths from BasisCurves prims
-    seg_wavelengths = []
-    for prim in stage.Traverse():
-        if prim.IsA(UsdGeom.BasisCurves):
-            wl_attr = prim.GetAttribute("optics:beam:wavelength")
-            seg_wavelengths.append(
-                float(wl_attr.Get()) if wl_attr and wl_attr.HasAuthoredValue() else 532.0)
-
-    wavelength_nm = seg_wavelengths[0] if seg_wavelengths else 532.0
-    wavelength_mm = wavelength_nm * 1e-6  # nm → mm
-    z_R0 = math.pi * w0_mm ** 2 / wavelength_mm
-    q = complex(0.0, z_R0)  # complex beam parameter at fiber waist
-
-    bp_attr = stage.GetDefaultPrim().GetAttribute("optics:beamPath")
-    if not bp_attr or not bp_attr.HasAuthoredValue():
-        return []
-    raw_segs = json.loads(bp_attr.Get())
-
-    def beam_width(q_val):
-        try:
-            inv_q = 1.0 / q_val
-            w2 = -wavelength_mm / (math.pi * inv_q.imag)
-            return round(math.sqrt(max(w2, 1e-5)), 5)
-        except Exception:
-            return w0_mm
-
-    def focal_length(comp):
-        t = comp.get("type", "")
-        if t in ("lens", "cylindrical_lens", "eyepiece"):
-            f = comp.get("attrs", {}).get("focalLength_mm")
-            return float(f) if f else None
-        return None
-
-    def _make_element_stat(comp, q_before, q_after):
-        """Physics summary for one optical element at the current q state."""
-        stat = {
-            "name": comp["name"],
-            "type": comp.get("type", "unknown"),
-            "w_in_mm": beam_width(q_before),
-        }
-        f = focal_length(comp)
-        if f:
-            # After the lens: new Rayleigh range = Im(q_after)
-            z_R_new = abs(q_after.imag)
-            # Distance from this lens to the next beam waist = -Re(q_after)
-            # (positive means waist is downstream of the lens)
-            z_waist = -q_after.real
-            # Beam radius at the next waist = sqrt(λ * z_R_new / π)
-            w_waist = math.sqrt(max(wavelength_mm * z_R_new / math.pi, 1e-10))
-            # Half-angle divergence after this lens θ = λ/(π·w_waist) [rad]
-            div_mrad = wavelength_mm / (math.pi * w_waist) * 1000.0
-            stat.update({
-                "w_out_mm": beam_width(q_after),
-                "focal_length_mm": f,
-                "z_R_after_mm": round(z_R_new, 3),
-                "z_waist_mm": round(z_waist, 2),
-                "w_waist_mm": round(w_waist, 5),
-                "divergence_after_mrad": round(div_mrad, 4),
-            })
-        return stat
-
-    N = 20  # sample points between consecutive optical elements
-
-    result = []
-    for si, seg_nodes in enumerate(raw_segs):
-        wl = seg_wavelengths[si] if si < len(seg_wavelengths) else 532.0
-
-        anchors = _resolve_beam_nodes(seg_nodes, comps_by_name)
-        if len(anchors) < 2:
-            continue
-
-        pts_out, widths_out = [], []
-        element_stats = []
-        anchor_names = {n["ref"] for n in anchors if n["ref"]}
-
-        # Emit first anchor, apply its ABCD
-        a0 = anchors[0]
-        pts_out.append([round(v, 2) for v in a0["pos"]])
-        widths_out.append(beam_width(q))
-        q_before_a0 = q
-        if a0["comp"]:
-            f0 = focal_length(a0["comp"])
-            if f0:
-                q = q / (1.0 - q / f0)
-            element_stats.append(_make_element_stat(a0["comp"], q_before_a0, q))
-
-        for ai in range(1, len(anchors)):
-            prev_node, curr_node = anchors[ai - 1], anchors[ai]
-            pos_prev = prev_node["pos"]
-            pos_curr = curr_node["pos"]
-
-            # Find intermediate optics on this gap (e.g. CollimLens between Laser and BS)
-            ints = [(t, n, c) for t, n, c in
-                    _find_components_on_segment(comps_by_name, pos_prev, pos_curr)
-                    if n not in anchor_names]
-
-            stops = []
-            for _, _, ic in ints:
-                center = _component_beam_point(ic)
-                stops.append((ic, _project_point_to_line(center, pos_prev, pos_curr)))
-            stops.append((curr_node["comp"], pos_curr))
-
-            from_pos = pos_prev
-            for stop_comp, stop_pos in stops:
-                d = math.dist(stop_pos, from_pos)
-                if d < 0.01:
-                    continue
-                # Sample N points from from_pos to stop_pos
-                for s in range(1, N + 1):
-                    tf = s / N
-                    spt = [from_pos[j] + tf * (stop_pos[j] - from_pos[j]) for j in range(3)]
-                    pts_out.append([round(v, 2) for v in spt])
-                    widths_out.append(beam_width(q + tf * d))
-                # Advance q: free space then lens (if any)
-                q = q + d
-                q_before_stop = q
-                if stop_comp:
-                    f = focal_length(stop_comp)
-                    if f:
-                        q = q / (1.0 - q / f)
-                    element_stats.append(_make_element_stat(stop_comp, q_before_stop, q))
-                from_pos = stop_pos
-
-        # Half-angle divergence of the input beam (before any optics)
-        div_input_mrad = round(wavelength_mm / (math.pi * w0_mm) * 1000.0, 3)
-
-        info = {
-            "w0_mm": w0_mm,
-            "z_R0_mm": round(z_R0, 4),
-            "divergence_input_mrad": div_input_mrad,
-            "w_final_mm": widths_out[-1] if widths_out else w0_mm,
-            "elements": element_stats,
-        }
-        result.append({"pts": pts_out, "widths": widths_out, "wavelength": wl, "info": info})
-
-    return result
-
-
-@app.get("/api/projects/<name>/beam/paraxial")
-def get_paraxial_beam(name):
-    """Gaussian beam width along the beam path (ABCD matrix propagation).
-    Query param: w0 — initial beam waist radius in mm (default 0.0025 = 2.5 µm fiber)."""
-    w0 = float(request.args.get("w0", 0.0025))
-    stage = Usd.Stage.Open(project_setup(name))
-    comps = []
-    for prim in _component_prims(stage):
-        x, y, z, rot_x, rot_y, rot_z = _placement_xform_values(prim)
-        t_val = prim.GetAttribute("optics:type").Get()
-        comps.append(dict(name=prim.GetName(), type=t_val,
-                          x=round(x, 3), y=round(y, 3), z=round(z, 3),
-                          rotX=round(rot_x, 3), rotY=round(rot_y, 3),
-                          rotZ=round(rot_z, 3), attrs=_optics_attrs(prim)))
-    comps_by_name = {c["name"]: c for c in comps}
-    segments = _paraxial_segments(stage, comps_by_name, w0_mm=w0)
-    return jsonify(segments=segments)
 
 
 # -------------------------------------------------------------------------

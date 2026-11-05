@@ -106,32 +106,3 @@ def ensure_fixed_breadboard_reference(
     stage.GetRootLayer().Save()
     return True
 
-
-def set_render_mode(stage, component_path, mode):
-    from pxr import UsdGeom, Sdf
-
-    if mode not in ("hi", "lo"):
-        raise ValueError("mode must be 'hi' or 'lo'")
-
-    component_prim = stage.GetPrimAtPath(component_path)
-    hi_prim = stage.GetPrimAtPath(f"{component_path}/hi")
-    lo_prim = stage.GetPrimAtPath(f"{component_path}/lo")
-
-    if not component_prim.IsValid():
-        raise ValueError(f"component not found: {component_path}")
-    if not hi_prim.IsValid():
-        raise ValueError(f"hi prim not found: {component_path}/hi")
-    if not lo_prim.IsValid():
-        raise ValueError(f"lo prim not found: {component_path}/lo")
-
-    if mode == "hi":
-        UsdGeom.Imageable(hi_prim).MakeVisible()
-        UsdGeom.Imageable(lo_prim).MakeInvisible()
-    else:
-        UsdGeom.Imageable(hi_prim).MakeInvisible()
-        UsdGeom.Imageable(lo_prim).MakeVisible()
-
-    component_prim.CreateAttribute(
-        "optics:renderMode",
-        Sdf.ValueTypeNames.String
-    ).Set(mode)

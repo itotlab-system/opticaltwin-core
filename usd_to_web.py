@@ -9,7 +9,7 @@ It traverses the setup, reads each simple gprim (Cube / Cylinder / BasisCurves)
 with its resolved world transform and display color, and builds a glb scene.
 Breadboard mounting holes (a PointInstancer) are skipped to keep the file light.
 
-Run:   python usd_to_web.py [setups/slm_imaging.usda ...]
+Run:   python usd_to_web.py [setups/optical_bench.usda ...]
        (no args -> exports every setups/*.usda)
 Out:   web/<setup_name>.glb
 """

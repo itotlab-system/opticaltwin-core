@@ -1139,9 +1139,10 @@ const Viewport = forwardRef<ViewportHandle, {
     rotX: number,
     rotY: number,
     rotZ: number,
+    immediate?: boolean,
   ) => void;
   // Rigid move of the whole selection, saved in a single request.
-  onMoveMany: (updates: ComponentUpdate[]) => void;
+  onMoveMany: (updates: ComponentUpdate[], immediate?: boolean) => void;
   /** `snap` false = Alt was held: put it exactly where clicked, not in the beam. */
   onPlace?: (point: THREE.Vector3, snap: boolean) => void;
   /** Turn a selected mirror / beamsplitter so the beam leaves to that side. */
@@ -1212,7 +1213,7 @@ const Viewport = forwardRef<ViewportHandle, {
   const center = new THREE.Vector3(cx, cy, cz);
   const zFloor = bb.max[2];   // board top surface — parts rest on or above it
   const clampZ = (z: number) => Math.min(Z_MAX_MM, Math.max(zFloor, z));
-  // Canvas background — dark / gray / light, picked in the toolbar (#156).
+  // Canvas background — dark / gray / light, picked in the toolbar.
   const { bgColor } = useSettings();
   // The move/rotate gizmo drives one object, so it only appears for a
   // single-part selection; groups get their own gizmo.
@@ -1260,7 +1261,7 @@ const Viewport = forwardRef<ViewportHandle, {
   }, [isPlacing]);
   const [pinPreviewPoint, setPinPreviewPoint] = useState<THREE.Vector3 | null>(null);
   // The axis triad is editor furniture, not part of the setup, so it is hidden
-  // for the duration of a snapshot (#154). Hidden rather than unmounted:
+  // for the duration of a snapshot. Hidden rather than unmounted:
   // GizmoHelper's renderPriority makes it the one driving the render loop, so
   // taking it out mid-capture would leave the frame unpainted.
   const [hideAxisTriad, setHideAxisTriad] = useState(false);
@@ -1761,7 +1762,7 @@ const Viewport = forwardRef<ViewportHandle, {
     const rotX = Math.round(selectedRef.rotation.x / DEG);
     const rotY = Math.round(selectedRef.rotation.y / DEG);
     const rotZ = Math.round(selectedRef.rotation.z / DEG);
-    onMove(selected, x, y, z, rotX, rotY, rotZ);
+    onMove(selected, x, y, z, rotX, rotY, rotZ, true);
   };
 
   const setRef = (name: string, ref: THREE.Group | null) => {
@@ -1930,7 +1931,7 @@ const Viewport = forwardRef<ViewportHandle, {
       !delta.dx && !delta.dy && !delta.dz
       && !delta.dRotX && !delta.dRotY && !delta.dRotZ
     ) return;
-    onMoveMany(rigidTransform(components, selection, delta, drag.pivot));
+    onMoveMany(rigidTransform(components, selection, delta, drag.pivot), true);
   };
 
   const handlePinTransformEnd = () => {

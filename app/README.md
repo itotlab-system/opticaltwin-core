@@ -50,7 +50,6 @@ The backend serves `app/dist/` automatically in production. See `../README.md`.
 ## Features
 
 - **3D viewport** — React Three Fiber, Z-up (matches USD units in mm), OrbitControls, HDRI lighting
-- **Beam width** button — toggles Gaussian beam simulation (ABCD paraxial, server-side)
 - **Outliner** — collapsible component tree grouped by optical-element type
 - **Inspector** — numeric X/Y/Z/rotZ fields + component properties + physics panel
 - **Grouping** — Ctrl/Cmd+click to multi-select, `Ctrl+G` to group, `Ctrl+Shift+G`
@@ -71,14 +70,12 @@ src/
     Viewport.tsx        # R3F canvas (lighting, controls, postprocessing)
     Component3D.tsx     # per-component 3D mesh
     Beam.tsx            # planning polyline (geometry only)
-    ParaxialBeam.tsx    # Gaussian beam width tubes (physics mode)
     Breadboard.tsx      # hole grid
     GroupOutline.tsx    # dashed box + label around a group
   ui/
     Outliner.tsx        # component tree
     Inspector.tsx       # numeric editor + beam pin controls
     GroupInspector.tsx  # multi-selection panel (rename, nudge, ungroup)
-    PhysicsPanel.tsx    # paraxial simulation results table
     ProjectGallery.tsx  # landing page
   theme.css             # dark engineering theme
 ```
@@ -139,7 +136,6 @@ cd app && npm run build    # app/dist/ に出力されます
 ## 機能一覧
 
 - **3Dビューポート** — React Three Fiber、Z軸上向き（USDのmm単位に合わせた設定）、OrbitControls、HDRIライティング
-- **Beam width ボタン** — ガウシアンビームシミュレーションの切り替え（ABCDパラキシャル、サーバー側で計算）
 - **Outliner** — 光学素子の種類ごとに折りたためるコンポーネントツリー
 - **Inspector** — X/Y/Z/rotZ の数値入力、コンポーネントプロパティ、物理パネル
 - **グループ化** — Ctrl/Cmd+クリックで複数選択、`Ctrl+G` でグループ化、
@@ -159,12 +155,10 @@ src/
     Viewport.tsx        # R3F キャンバス（ライティング・コントロール）
     Component3D.tsx     # コンポーネントの3Dメッシュ
     Beam.tsx            # ビーム計画ライン（ジオメトリのみ）
-    ParaxialBeam.tsx    # ガウシアンビーム幅チューブ（物理モード）
     Breadboard.tsx      # ホールグリッド
   ui/
     Outliner.tsx        # コンポーネントツリー
     Inspector.tsx       # 数値エディタ・ビームピンコントロール
-    PhysicsPanel.tsx    # パラキシャルシミュレーション結果テーブル
     ProjectGallery.tsx  # ランディングページ
   theme.css             # ダークエンジニアリングテーマ
 ```

@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-// Issue #155: copy & paste. Ctrl+C / Ctrl+V duplicates the selected parts one
+// Copy & paste. Ctrl+C / Ctrl+V duplicates the selected parts one
 // breadboard hole away, repeated pastes fan out, and a whole project can be
 // duplicated from its gallery card.
 
@@ -79,7 +79,7 @@ test("Ctrl+C / Ctrl+V drops a copy one hole away, and pastes again fan out",
   });
 
 test("a copy taken in one project pastes into another", async ({ page, baseURL }) => {
-  // Issue #155: the clipboard outlives leaving the project, and the parts land
+  // The clipboard outlives leaving the project, and the parts land
   // on the coordinates they had on the other bench.
   const stamp = Date.now();
   const source = `e2e-xsrc-${stamp}`;

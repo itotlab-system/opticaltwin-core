@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-// Issue #207: renaming a project from its gallery card. The name edits in
+// Renaming a project from its gallery card. The name edits in
 // place, the card keeps its parts, and the old name is gone.
 
 import { cardAction, loginIfNeeded, openProject } from "./helpers";

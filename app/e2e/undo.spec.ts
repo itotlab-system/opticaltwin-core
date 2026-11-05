@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-// Issue #157: Ctrl+Z rewinds an editing step, Ctrl+Shift+Z replays it. The
+// Ctrl+Z rewinds an editing step, Ctrl+Shift+Z replays it. The
 // history is a stack of USD layer snapshots on the server, so a delete comes
 // back with its reference and attributes intact.
 

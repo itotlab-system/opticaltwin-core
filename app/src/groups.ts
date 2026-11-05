@@ -1,4 +1,4 @@
-// Pure helpers for PowerPoint-style component grouping (#114).
+// Pure helpers for PowerPoint-style component grouping.
 //
 // A group is a flat set of component names moved and rotated as one rigid
 // body. A component belongs to at most one group and groups never nest, so

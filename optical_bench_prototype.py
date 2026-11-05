@@ -6,7 +6,7 @@ library, and a straight planning beam. Kept as the smallest possible example of
 the data model. The component-generation logic now lives in optics_lib.py; this
 script is just a thin caller.
 
-For the real lab setup see slm_imaging_setup.py.
+For a fuller, folded example see the `slm_imaging` recipe in templates.py.
 
 Run:  python optical_bench_prototype.py
 Out:  components/<component>/lo.usda, setups/optical_bench.usda

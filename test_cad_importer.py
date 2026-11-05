@@ -1,5 +1,6 @@
 import importlib.util
 import inspect
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -229,11 +230,15 @@ class LaserEmissionTests(unittest.TestCase):
     def test_nested_npl64a_keeps_vendor_origin_and_emission_surface(self):
         source = inspect.getsource(cad_importer.main)
 
-        self.assertIn("center_generated_component = rod_component", source)
-        self.assertNotIn(
-            "center_generated_component = rod_component or nested_laser",
-            source,
+        # Laser STEP files already carry their optical origin; re-centring the
+        # nested Laser catalogue shifted NPL64A by 3 mm off the beam. Whatever
+        # else joins the re-centred kinds, nested_laser must not.
+        centred = re.search(
+            r"center_generated_component = \((.*?)\)", source, re.S
         )
+        self.assertIsNotNone(centred)
+        self.assertIn("rod_component", centred.group(1))
+        self.assertNotIn("nested_laser", centred.group(1))
         self.assertIn(
             'Path(component_name).name.lower() == "npl64a-step"',
             source,
