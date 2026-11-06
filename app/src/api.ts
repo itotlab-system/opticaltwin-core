@@ -119,10 +119,12 @@ export const api = {
 
   // `snap` lets an in-beam part dropped near the beam land IN it (centred, at
   // beam height, facing along it); false puts it exactly where it was dropped.
+  // Answers with a move payload plus the new part(s), merged with mergeMove.
   addComponent: (
     p: string, asset: string, x: number, y: number, snap = true,
-  ): Promise<{ ok: boolean; name: string; snapped: string | null }> =>
-    post(`/api/projects/${p}/add`, { asset, x, y, snap }),
+    renderMode: "hi" | "lo" = "lo",
+  ): Promise<MovePayload & { name: string; snapped: string | null }> =>
+    post(`/api/projects/${p}/add`, { asset, x, y, snap, renderMode }),
 
   // Turn a mirror or beamsplitter so the beam leaves it to that side.
   foldBeam: (p: string, c: string, turn: "left" | "right", renderMode: string): Promise<MovePayload> =>
@@ -184,7 +186,7 @@ export const api = {
     on: boolean,
     names?: string[],
     renderMode: "hi" | "lo" = "lo"
-  ): Promise<ProjectData & { ok: boolean; switched: string[] }> =>
+  ): Promise<MovePayload & { switched: string[] }> =>
     post(`/api/projects/${p}/lasers`, { on, names, renderMode }),
 
   // Draw one leg of the beam: its width at each end, optionally pinched to a

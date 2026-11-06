@@ -265,7 +265,7 @@ LIBRARY = {
 def cad_library_assets(lib_dir=None):
     """Discover generated components whose hi.usda and lo.usda both exist."""
     lib_dir = lib_dir or os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "components",
     )
     standard_components = {
@@ -303,7 +303,7 @@ def component_library_assets(lib_dir=None):
 def build_component_library(lib_dir):
     """(Re)generate every asset in LIBRARY into lib_dir. Safe to call repeatedly."""
     import os
-    import usd_utility as uu
+    from opticaltwin import usd_utility as uu
     os.makedirs(lib_dir, exist_ok=True)
     for fname, (fn, kw) in LIBRARY.items():
         path = uu.get_component_usda_path(lib_dir, fname)
@@ -345,7 +345,7 @@ def add_breadboard(stage, root_path, nx, ny, x0=0.0, y0=0.0, spacing=GRID_MM,
     board_cz = board_top - thickness_mm / 2.0
 
     if asset_rel_path:
-        import usd_utility as uu
+        from opticaltwin import usd_utility as uu
         board_xform = UsdGeom.Xform.Define(stage, f"{root_path}/Breadboard")
         board_prim = board_xform.GetPrim()
         board_prim.GetReferences().AddReference(
@@ -409,7 +409,7 @@ def place(stage, root_path, name, asset_rel_path, x_mm, y_mm=0.0, z_mm=BEAM_Z,
     """
     if x_mm % GRID_MM or y_mm % GRID_MM:
         print(f"  ! {name}: ({x_mm},{y_mm}) is off the {GRID_MM:g}mm grid")
-    import usd_utility as uu
+    from opticaltwin import usd_utility as uu
     asset_rel_path = uu.normalize_component_asset_ref(asset_rel_path)
     prim = stage.OverridePrim(f"{root_path}/{name}")
     prim.GetReferences().AddReference(asset_rel_path)

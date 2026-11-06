@@ -11,7 +11,7 @@
 #     python tools/fetch_cad.py --list           # show what is missing
 #     python tools/fetch_cad.py                  # download what has a url
 #
-# and convert them with cad_importer.py (see docs/dev/ASSETS.md).
+# and convert them with opticaltwin/cad_importer.py (see docs/dev/ASSETS.md).
 #
 # TOML, not YAML, so `tomllib` from the Python 3.12 standard library can read it
 # without adding a dependency.
@@ -76,7 +76,7 @@ step_url = ""
 # product_page is left empty: OptoSigma's catalogue refuses automated requests,
 # so the URL could not be confirmed. Paste it in once you have opened the page.
 #
-#   python cad_importer.py cad/Polarizer/SPF-50C-32.stp \
+#   python -m opticaltwin.cad_importer cad/Polarizer/SPF-50C-32.stp \
 #       --component-name "Polarizer/SPF-50C-32" --type polarizer --lod both \
 #       --source-forward-axis +Y --source-origin 0 3 0 \
 #       --ignore-step-colors --color 0.6 0.7 0.8 --opacity 0.35 \
@@ -105,7 +105,7 @@ type = "iris"
 target = "Iris/CP20D-Step.step"
 step_url = ""
 
-#   python cad_importer.py cad/Iris/ID50Z_M-Step.step \
+#   python -m opticaltwin.cad_importer cad/Iris/ID50Z_M-Step.step \
 #       --component-name "Iris/ID50Z_M-Step" --type iris --lod both \
 #       --source-forward-axis +Z --source-origin 0 0 0.25 \
 #       --lo-proxy surface --lo-target-triangles 2000 \
@@ -186,7 +186,7 @@ step_url = ""
 # along the optical axis, so the import recenters it; the C-mount thread is at
 # +X, the end that faces the sensor or the DMD.
 
-#   python cad_importer.py cad/Lens/WPHSM05-532-Step.step \
+#   python -m opticaltwin.cad_importer cad/Lens/WPHSM05-532-Step.step \
 #       --component-name "Lens/WPHSM05-532-Step" --type polarizer --lod both \
 #       --source-forward-axis +X --source-roll-deg -90 \
 #       --source-origin -1.41 0 0 \
@@ -229,7 +229,7 @@ target = "Mount/LMR30_M-Step.step"
 step_url = ""
 # Diameter 30 mm lens mount -- the ring the DLB-30-50PM sits in.
 
-#   python cad_importer.py cad/Mount/LMR2_M-Step.step \
+#   python -m opticaltwin.cad_importer cad/Mount/LMR2_M-Step.step \
 #       --component-name "Mount/LMR2_M-Step" --type mount --lod both \
 #       --source-forward-axis +Z --source-origin -31.16 -32.34 15.01 \
 #       --attr beamApertureRadius_mm=24.13 \
@@ -256,7 +256,7 @@ type = "mount"
 target = "Mount/LMR2_M-Step.step"
 step_url = ""
 
-#   python cad_importer.py cad/Mount/ID25_M-Step.step \
+#   python -m opticaltwin.cad_importer cad/Mount/ID25_M-Step.step \
 #       --component-name "Mount/ID25_M-Step" --type iris --lod both \
 #       --source-forward-axis +Z --source-origin 40.44 18.2 3.3 \
 #       --lo-proxy surface --lo-target-triangles 2000 \
@@ -297,7 +297,7 @@ type = "iris"
 target = "Mount/ID25_M-Step.step"
 step_url = ""
 
-#   python cad_importer.py cad/Mount/RSP1_M-Step.step \
+#   python -m opticaltwin.cad_importer cad/Mount/RSP1_M-Step.step \
 #       --component-name "Mount/RSP1_M-Step" --type mount --lod both \
 #       --source-forward-axis +Y --source-roll-deg -90 \
 #       --source-origin 0 0 0 \
@@ -397,7 +397,7 @@ type = "slm"
 target = "SLM/EXULUS-HD2HP-Step.step"
 step_url = ""
 
-#   python cad_importer.py cad/SLM/EXULUS-SE1-Step.step \
+#   python -m opticaltwin.cad_importer cad/SLM/EXULUS-SE1-Step.step \
 #       --component-name "SLM/EXULUS-SE1-Step" --type slm --lod both \
 #       --source-forward-axis +Z --source-origin -39.3 9.7 -48.5 \
 #       --preserve-step-parts \
@@ -442,7 +442,7 @@ step_url = ""
 # ---------------------------------------------------------------------------
 # Beam expanders
 # ---------------------------------------------------------------------------
-#   python cad_importer.py cad/Expander/LBED-10.stp \
+#   python -m opticaltwin.cad_importer cad/Expander/LBED-10.stp \
 #       --component-name "Expander/LBED-10" --type lens --lod both \
 #       "--source-forward-axis=-Y" --source-roll-deg 90 \
 #       --source-origin 0 -57.75 0 --lo-proxy cylinder \
@@ -479,7 +479,7 @@ OptoSigma publishes CAD on each product page for use in customer designs.
 Check the terms on the page; the same rule applies as for Thorlabs -- download
 the parts you own yourself rather than redistributing the model."""
 
-#   python cad_importer.py cad/Holder/KLH-BE-M22H.stp \
+#   python -m opticaltwin.cad_importer cad/Holder/KLH-BE-M22H.stp \
 #       --component-name "Holder/KLH-BE-M22H" --type mount --lod both \
 #       --source-forward-axis +Y --source-roll-deg -90 \
 #       --source-origin 0 -3.2245 0 \
@@ -517,7 +517,7 @@ the parts you own yourself rather than redistributing the model."""
 # ---------------------------------------------------------------------------
 # Filter and polarizer holders
 # ---------------------------------------------------------------------------
-#   python cad_importer.py cad/Holder/NDHN-50.stp \
+#   python -m opticaltwin.cad_importer cad/Holder/NDHN-50.stp \
 #       --component-name "Holder/NDHN-50" --type mount --lod both \
 #       --source-forward-axis +Y --source-roll-deg -90 \
 #       --source-origin 0 -18.7 69 \
@@ -546,7 +546,7 @@ OptoSigma publishes CAD on each product page for use in customer designs.
 Check the terms on the page; the same rule applies as for Thorlabs -- download
 the parts you own yourself rather than redistributing the model."""
 
-#   python cad_importer.py cad/Holder/PH-50-ARS.stp \
+#   python -m opticaltwin.cad_importer cad/Holder/PH-50-ARS.stp \
 #       --component-name "Holder/PH-50-ARS" --type mount --lod both \
 #       --source-forward-axis +X --source-roll-deg -90 \
 #       --source-origin -2.0505 0 0 \
@@ -600,7 +600,7 @@ step_url = ""
 # ---------------------------------------------------------------------------
 # Cage system
 # ---------------------------------------------------------------------------
-#   python cad_importer.py cad/Cage/CCM1-BS013_M-Step.step \
+#   python -m opticaltwin.cad_importer cad/Cage/CCM1-BS013_M-Step.step \
 #       --component-name "Cage/CCM1-BS013_M-Step" --type beamsplitter \
 #       --lod both --source-forward-axis +X --source-origin 0 0 0 \
 #       --preserve-step-solids \
@@ -627,7 +627,7 @@ type = "beamsplitter"
 target = "Cage/CCM1-BS013_M-Step.step"
 step_url = ""
 
-#   python cad_importer.py cad/Cage/SI254-Step.step \
+#   python -m opticaltwin.cad_importer cad/Cage/SI254-Step.step \
 #       --component-name "Cage/SI254-Step" --type detector --lod both \
 #       --source-forward-axis +X --source-roll-deg -90 \
 #       --source-origin -1.69 19.15 24.13 \
@@ -910,7 +910,7 @@ product_page = ""
 step_url = ""
 license_note = "Provenance unconfirmed. Do not publish a link until it is established."
 
-#   python cad_importer.py \
+#   python -m opticaltwin.cad_importer \
 #       "cad/Camera/205-16-10_Cam.44x29_USB3.1C_CS-FP_13,3_ER-6,7.stp" \
 #       --component-name "Camera/Cam-44x29-CS-205-16-10" --type camera \
 #       --lod both --source-forward-axis +Z --source-origin 0 0 13.3 \

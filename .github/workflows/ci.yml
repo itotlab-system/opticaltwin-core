@@ -34,32 +34,20 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-app.txt
+          pip install -r requirements-dev.txt
+
+      - name: Build the component library and an example project
+        # The smoke test that matters most: it proves a fresh clone can reach a
+        # runnable state.
+        run: python setup_projects.py
 
       # cadquery-ocp (the OpenCASCADE bindings) is deliberately NOT installed:
       # it is a large optional extra that only the STEP import path needs. The
       # tests that require it skip themselves, which also checks that a base
       # install stays usable -- the state a new contributor is actually in.
+      # The public export ships a subset of tests/ (see tools/export_public.sh).
       - name: Run tests
-        run: python -m unittest test_component_library test_beam_tracer test_cad_importer
-
-      - name: Build the component library and an example project
-        # Runs BEFORE the pytest suite on purpose. This is the smoke test that
-        # matters most -- it proves a fresh clone can reach a runnable state --
-        # and tests/ currently has known failures, so leaving this last meant it
-        # was skipped on every single run and told us nothing.
-        run: python setup_projects.py
-
-      - name: Run the backend API tests
-        # Only present in the lab's development repository; the public export
-        # ships the unittest suites above.
-        run: |
-          if [ -d tests ]; then
-            pip install -r requirements-dev.txt
-            pytest tests/ -q
-          else
-            echo "no tests/ directory — skipping"
-          fi
+        run: python -m pytest tests/ -q
 
   frontend:
     name: Frontend

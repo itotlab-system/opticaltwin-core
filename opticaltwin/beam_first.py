@@ -10,7 +10,7 @@ Distances are millimetres, angles degrees, the table is Z-up.
 
 import math
 
-import beam_tracer
+from opticaltwin import beam_tracer
 
 
 # How far (in plan) from a beam leg a drop still counts as "onto the beam".

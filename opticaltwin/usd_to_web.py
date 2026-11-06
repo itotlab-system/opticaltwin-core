@@ -1,5 +1,5 @@
 """
-usd_to_web.py  --  export a USD setup to glTF (.glb) for the web viewer
+opticaltwin/usd_to_web.py  --  export a USD setup to glTF (.glb) for the web viewer
 -----------------------------------------------------------------------
 USD stays the source of truth; this writes a *derived* web-native file that any
 browser can show (via web/viewer.html + Google's <model-viewer>). No install for
@@ -9,7 +9,7 @@ It traverses the setup, reads each simple gprim (Cube / Cylinder / BasisCurves)
 with its resolved world transform and display color, and builds a glb scene.
 Breadboard mounting holes (a PointInstancer) are skipped to keep the file light.
 
-Run:   python usd_to_web.py [setups/optical_bench.usda ...]
+Run:   python -m opticaltwin.usd_to_web [setups/optical_bench.usda ...]
        (no args -> exports every setups/*.usda)
 Out:   web/<setup_name>.glb
 """
@@ -22,7 +22,7 @@ import trimesh
 from trimesh import transformations as tf
 from pxr import Usd, UsdGeom
 
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # the repository
 WEB_DIR = os.path.join(ROOT_DIR, "web")
 os.makedirs(WEB_DIR, exist_ok=True)
 

@@ -1,5 +1,5 @@
 """
-templates.py  --  named optical-setup recipes
+opticaltwin/templates.py  --  named optical-setup recipes
 ----------------------------------------------
 Each recipe builds a setup into an existing (stage, root) using a `ref` callable
 that maps a component filename -> a path RELATIVE to the setup file (so the saved
@@ -11,7 +11,7 @@ A recipe is the *starting point* for a project. Teams then edit positions in the
 web editor; USD remains the source of truth.
 """
 
-import optics_lib as ol
+from opticaltwin import optics_lib as ol
 
 
 def blank_bench(stage, root, ref):

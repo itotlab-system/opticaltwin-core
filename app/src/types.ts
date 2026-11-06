@@ -196,6 +196,10 @@ export interface MovePayload {
   renderMode: "hi" | "lo";
   canUndo?: boolean;
   canRedo?: boolean;
+  // Placing a part: the new parts in full (built exactly as a reload builds
+  // them), and the authored beam path. Absent on every other move.
+  added?: Component[];
+  beamPath?: BeamNode[][];
 }
 
 // One component's new pose in a batch move.

@@ -6,9 +6,11 @@ from unittest.mock import patch
 
 from pxr import Usd, UsdGeom
 
-import optics_lib
+from opticaltwin import optics_lib
 import server
-import usd_utility
+from backend import catalog, components, placement
+from backend import config
+from opticaltwin import usd_utility
 
 # cad_importer imports the OpenCASCADE bindings at module level, and those are
 # an optional extra (`pip install cadquery-ocp`) because they are large and only
@@ -57,10 +59,10 @@ class NestedComponentLibraryTests(unittest.TestCase):
             components_directory = root / "components"
 
             with (
-                patch.object(server, "LIB_DIR", str(components_directory)),
-                patch("cad_importer.main") as convert,
+                patch.object(config, "LIB_DIR", str(components_directory)),
+                patch("opticaltwin.cad_importer.main") as convert,
             ):
-                server._sync_cad_catalog_group(
+                catalog._sync_cad_catalog_group(
                     str(cad_directory),
                     "Rod",
                     "rod",
@@ -96,11 +98,11 @@ class NestedComponentLibraryTests(unittest.TestCase):
             setup.GetRootLayer().Save()
 
             self.assertEqual(
-                server._placement_xform_values(placed),
+                placement._placement_xform_values(placed),
                 (10.0, 20.0, 30.0, 0.0, 0.0, 0.0),
             )
             self.assertEqual(
-                server._component_model_pose(asset, asset_prim)["modelRotation"],
+                components._component_model_pose(asset, asset_prim)["modelRotation"],
                 [90.0, 0.0, 45.0],
             )
 

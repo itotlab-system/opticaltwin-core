@@ -101,7 +101,7 @@ For a production build, run `npm run build` in `app/`. The backend then serves
 ### The component library is generated
 
 `components/` is **not** checked in. `python setup_projects.py` builds the
-catalogue from the `make_*` generators in `optics_lib.py`: lenses, mirrors,
+catalogue from the `make_*` generators in `opticaltwin/optics_lib.py`: lenses, mirrors,
 beamsplitters, irises, detectors and so on, dimensioned to common
 Ø1″ / 30 mm-cage standards. Re-run it any time to rebuild.
 
@@ -130,7 +130,7 @@ hand. Then convert it:
 
 ```bash
 pip install cadquery-ocp   # large; only the CAD import path needs it
-python cad_importer.py path/to/PART.step --type lens --lod both \
+python -m opticaltwin.cad_importer path/to/PART.step --type lens --lod both \
     --component-name MyPart
 ```
 
@@ -168,13 +168,15 @@ and setups are plain text, so they diff and merge in git.
 
 ```
 OpticalTwin/
-├── server.py            # Flask backend: reads/writes USD, serves the REST API
-├── optics_lib.py        # component generators and setup helpers
-├── templates.py         # named setup recipes
+├── server.py            # entry point: python server.py
+├── backend/             # Flask backend: reads/writes USD, serves the REST API
+├── opticaltwin/         # core library, no web code:
+│   ├── optics_lib.py    #   component generators and setup helpers
+│   ├── templates.py     #   named setup recipes
+│   ├── beam_tracer.py   #   straight-line beam path resolution
+│   ├── cad_importer.py  #   STEP → USD components (python -m opticaltwin.cad_importer)
+│   └── usd_to_web.py    #   setup .usda → .glb (python -m opticaltwin.usd_to_web)
 ├── setup_projects.py    # scaffolds projects/<name>/setup.usda from a template
-├── cad_importer.py      # STEP → USD component conversion
-├── beam_tracer.py       # straight-line beam path resolution
-├── usd_to_web.py        # setup .usda → .glb (glTF, Y-up)
 ├── cad/SOURCES.toml     # manufacturer CAD manifest (pointers, no CAD data)
 ├── tools/fetch_cad.py   # fetches the models listed in that manifest
 ├── app/                 # React + React Three Fiber frontend
@@ -190,7 +192,8 @@ files even if OpticalTwin is no longer available.
 ## Tests
 
 ```bash
-python -m unittest test_component_library test_beam_tracer test_cad_importer
+pip install -r requirements-dev.txt   # adds pytest
+python -m pytest tests/
 cd app && npx playwright test     # browser end-to-end, starts the servers itself
 ```
 
@@ -231,7 +234,7 @@ If you use OpticalTwin in your research, please cite it as:
 
 > Kumano, K., Yoshino, K., Goto, M., & Matsuo, Y. (2026).
 > *OpticalTwin: a browser-based 3D viewer and editor for optical laboratory setups*
-> (Version 1.1.0) [Computer software].
+> (Version 2.0.0) [Computer software].
 > Zenodo. https://doi.org/10.5281/zenodo.21594827
 
 BibTeX:
@@ -241,7 +244,7 @@ BibTeX:
   author  = {Kumano, Kai and Yoshino, Kota and Goto, Masato and Matsuo, Yuto},
   title   = {{OpticalTwin: a browser-based 3D viewer and editor for optical laboratory setups}},
   year    = {2026},
-  version = {1.1.0},
+  version = {2.0.0},
   doi     = {10.5281/zenodo.21594827},
   publisher = {Zenodo},
   url     = {https://github.com/itotlab-system/opticaltwin-core}
@@ -298,7 +301,7 @@ cd app && npm install && npm run dev   # http://localhost:5173
 ```
 
 `components/`（部品カタログ）はリポジトリに含まれていません。`setup_projects.py` が
-`optics_lib.py` の `make_*` ジェネレータから生成します。
+`opticaltwin/optics_lib.py` の `make_*` ジェネレータから生成します。
 
 ## メーカー CAD データについて
 
@@ -314,7 +317,7 @@ python tools/fetch_cad.py             # 直リンクがあるものを取得
 ```
 
 直リンクが無いものは製品ページを表示しますので、各自でダウンロードしてください。
-取得後は `cad_importer.py` で USD に変換します（`docs/dev/ASSETS.md` 参照）。
+取得後は `opticaltwin/cad_importer.py` で USD に変換します（`docs/dev/ASSETS.md` 参照）。
 
 ## セキュリティ
 

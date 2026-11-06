@@ -26,7 +26,7 @@
 
 - [ ] Conventions kept: millimetres, Z-up, optical axis +X, `optics:` namespace,
       relative asset reference paths, text `.usda`
-- [ ] `python -m unittest test_component_library test_beam_tracer test_cad_importer` passes
+- [ ] `python -m pytest tests/` passes
 - [ ] `cd app && npm run build` passes (type-check included)
 - [ ] Tests added or updated for the change
 - [ ] No optical physics added (see Scope in CONTRIBUTING.md), or it was agreed in an issue first

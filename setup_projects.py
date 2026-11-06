@@ -12,9 +12,9 @@ Run:  python setup_projects.py            # create the default project(s)
 import os
 import shutil
 import sys
-import optics_lib as ol
-import templates as tpl
-import usd_utility as uu
+from opticaltwin import optics_lib as ol
+from opticaltwin import templates as tpl
+from opticaltwin import usd_utility as uu
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 LIB_DIR = os.path.join(ROOT_DIR, "components")

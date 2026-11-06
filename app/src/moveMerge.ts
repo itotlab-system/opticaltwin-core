@@ -2,7 +2,7 @@ import type { MovePayload, ProjectData } from "./types";
 
 // Attributes the server authors on the placement prim rather than in the
 // component asset, and therefore the only ones a move can change. Mirrors
-// PLACEMENT_ATTR_KEYS in server.py.
+// PLACEMENT_ATTR_KEYS in backend/payload.py.
 const PLACEMENT_ATTR_KEYS = [
   "pairedPost",
   "pairedHolder",
@@ -60,10 +60,16 @@ export function mergeMove(prev: ProjectData, patch: MovePayload): ProjectData {
     };
   });
 
+  // A placement adds parts: append the ones not already on screen. They come
+  // built exactly as a reload would build them, so the merged scene matches.
+  const present = new Set(components.map((c) => c.name));
+  const added = (patch.added ?? []).filter((c) => !present.has(c.name));
+
   return {
     ...prev,
-    components,
+    components: added.length ? [...components, ...added] : components,
     beam: patch.beam,
+    ...(patch.beamPath ? { beamPath: patch.beamPath } : {}),
     canUndo: patch.canUndo,
     canRedo: patch.canRedo,
   };

@@ -17,8 +17,8 @@ HAS_OCP = importlib.util.find_spec("OCP") is not None
 requires_ocp = unittest.skipUnless(HAS_OCP, "requires cadquery-ocp")
 
 if HAS_OCP:
-    import cad_importer
-    from cad_importer import (
+    from opticaltwin import cad_importer
+    from opticaltwin.cad_importer import (
         MeshPart,
         analyze_cylindrical_laser_emission,
         analyze_lens_profile,

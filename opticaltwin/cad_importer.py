@@ -2,38 +2,38 @@
 
 Examples:
     # Existing LA4380-A lens (backward-compatible default)
-    python cad_importer.py
+    python -m opticaltwin.cad_importer
 
     # Generate a high-detail model for any other component
-    python cad_importer.py cad/mirror/M1.step --type mirror \
+    python -m opticaltwin.cad_importer cad/mirror/M1.step --type mirror \
         --source-forward-axis +X --attr diameter_mm=25.4 \
         --attr reflectivity=0.99 --color 0.85 0.85 0.9
 
     # Generate both high- and low-detail models
-    python cad_importer.py cad/mirror/M1.step --type mirror --lod both
+    python -m opticaltwin.cad_importer cad/mirror/M1.step --type mirror --lod both
 
     # Rod: five CAD Mesh parts in hi, one metallic Cylinder in lo
-    python cad_importer.py cad/Rod/ER1.5-Step.step --type rod --lod both \
+    python -m opticaltwin.cad_importer cad/Rod/ER1.5-Step.step --type rod --lod both \
         --source-forward-axis +Y
 
     # Generate every Rod STEP into components/Rod/<STEP name>/
-    python cad_importer.py cad/Rod --type rod --lod both \
+    python -m opticaltwin.cad_importer cad/Rod --type rod --lod both \
         --source-forward-axis +Y
 
     # Generate every Laser STEP; each CAD model's longitudinal axis is detected
-    python cad_importer.py cad/Laser --type laser --lod both \
+    python -m opticaltwin.cad_importer cad/Laser --type laser --lod both \
         --source-forward-axis auto
 
     # An assembly whose STEP carries no colors: keep its leaves as named parts
     # and paint them. Unnamed leaves fall back to --color.
-    python cad_importer.py cad/SLM/EXULUS-SE1-Step.step --type slm --lod both \
+    python -m opticaltwin.cad_importer cad/SLM/EXULUS-SE1-Step.step --type slm --lod both \
         --preserve-step-parts --color 0.051269 0.051269 0.051269 \
         --part-color EEC4011_housing=0.62,0.09,0.10 \
         --part-color RDP551F_MODULE=0.32,0.34,0.37
 
     # A one-leaf assembly whose pieces come from STEP face colors instead: aim
     # at the meshes this writer names. Narrow rules first, broad ones after.
-    python cad_importer.py cad/Mount/ID25_M-Step.step --type iris --lod both \
+    python -m opticaltwin.cad_importer cad/Mount/ID25_M-Step.step --type iris --lod both \
         --mesh-color CADMesh_004=0.35,0.36,0.38 \
         --mesh-color CADMesh=0.051269,0.051269,0.051269 \
         --mesh-opacity CADMesh_004=0.2
@@ -81,7 +81,7 @@ from OCP.XCAFDoc import (
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 
-ROOT_DIR = Path(__file__).resolve().parent
+ROOT_DIR = Path(__file__).resolve().parent.parent  # the repository
 
 DEFAULT_COMPONENT_NAME = "Lens/LA1417-AB-Step"
 DEFAULT_DISPLAY_COLOR = (0.4, 0.7, 1.0)

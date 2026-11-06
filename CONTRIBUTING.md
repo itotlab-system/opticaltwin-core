@@ -84,13 +84,14 @@ cd app && npm install && npm run dev    # frontend on :5173
 Optional, for the CAD import path only:
 
 ```bash
-pip install cadquery-ocp    # large; only cad_importer.py needs it
+pip install cadquery-ocp    # large; only opticaltwin/cad_importer.py needs it
 ```
 
 ## Tests
 
 ```bash
-python -m unittest test_component_library test_beam_tracer test_cad_importer
+pip install -r requirements-dev.txt   # adds pytest
+python -m pytest tests/
 cd app && npx playwright test     # browser end-to-end, starts the servers itself
 ```
 
