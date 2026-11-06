@@ -3,7 +3,7 @@ fetch_cad.py  --  download the manufacturer CAD models listed in cad/SOURCES.tom
 
 No vendor CAD ships with OpticalTwin. This script reads the manifest of part
 numbers and vendor links and fetches the models for the parts you own into
-cad/, so `cad_importer.py` has something to convert.
+cad/, so `opticaltwin/cad_importer.py` has something to convert.
 
     python tools/fetch_cad.py --list      # what the manifest holds, and what is missing
     python tools/fetch_cad.py             # download every entry that has a step_url
@@ -121,7 +121,7 @@ def cmd_fetch(parts, only=None, force=False):
           f"{manual} need a manual download, {failed} failed")
     if manual:
         print("\n  Save the manual ones under cad/ at the `target` path shown in the\n"
-              "  manifest, then run cad_importer.py. See docs/dev/ASSETS.md.")
+              "  manifest, then run opticaltwin/cad_importer.py. See docs/dev/ASSETS.md.")
     return 1 if failed else 0
 
 

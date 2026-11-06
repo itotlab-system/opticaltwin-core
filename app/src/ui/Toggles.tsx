@@ -49,7 +49,7 @@ export default function Toggles({ showBg = true }: { showBg?: boolean }) {
         {lang === "en" ? "日本語" : "EN"}
       </button>
       <button className="ghost toggle" onClick={toggleTheme} title="Theme / テーマ">
-        {theme === "dark" ? "☀ Light" : "☾ Dark"}
+        {theme === "dark" ? t("theme_light") : t("theme_dark")}
       </button>
     </>
   );

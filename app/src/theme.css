@@ -88,29 +88,29 @@ button.primary { background: var(--accent-dim); border-color: var(--accent); }
 button.ghost { background: transparent; }
 .toggle { font-size: 12px; padding: 6px 9px; }
 
-.transform-mode-toggle {
+.transform-mode-toggle, .seg-toggle {
   display: inline-flex;
   flex: 0 0 auto;
 }
-.transform-mode-toggle button {
+.transform-mode-toggle button, .seg-toggle button {
   border-radius: 0;
   padding: 6px 10px;
   font-size: 12px;
 }
-.transform-mode-toggle button:first-child {
+.transform-mode-toggle button:first-child, .seg-toggle button:first-child {
   border-radius: 7px 0 0 7px;
 }
-.transform-mode-toggle button:last-child {
+.transform-mode-toggle button:last-child, .seg-toggle button:last-child {
   margin-left: -1px;
   border-radius: 0 7px 7px 0;
 }
-.transform-mode-toggle button.active {
+.transform-mode-toggle button.active, .seg-toggle button.active {
   position: relative;
   color: var(--text);
   background: var(--accent-dim);
   border-color: var(--accent);
 }
-.transform-mode-toggle button:disabled {
+.transform-mode-toggle button:disabled, .seg-toggle button:disabled {
   cursor: default;
   opacity: .45;
 }
@@ -118,6 +118,14 @@ button.ghost { background: transparent; }
 /* 図注: the mode and the layer's visibility as one segmented control, so the
    toolbar carries one 図注 item instead of two competing buttons. */
 .callout-toggle { display: inline-flex; flex: 0 0 auto; }
+/* Thin divider between toolbar groups: edit | view & beam | notes | output. */
+.tb-sep { flex: 0 0 1px; align-self: stretch; margin: 6px 4px; background: var(--line); }
+/* The laser's state as a light: lit (glowing) while emitting, hollow when off. */
+.laser-dot {
+  display: inline-block; width: 8px; height: 8px; margin-right: 6px;
+  border-radius: 50%; border: 1.5px solid currentColor; vertical-align: 0;
+}
+.laser-dot.on { background: #7cfc4a; border-color: #7cfc4a; box-shadow: 0 0 6px #7cfc4a; }
 .callout-toggle button { border-radius: 0; padding: 6px 10px; font-size: 12px; }
 .callout-toggle button:first-child { border-radius: 7px 0 0 7px; }
 .callout-toggle button:last-child { border-radius: 0 7px 7px 0; }

@@ -15,6 +15,66 @@ resolves to the latest release, so a citation of it stays valid.
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-11-06
+
+A major version because two commands and one REST route changed; see
+*Changed* and *Removed*. Scenes, the USD conventions and every other API route
+are unchanged, so existing setups open as before.
+
+### Added
+
+- **Design from a laser.** A new project can start from a laser instead of an
+  empty board. Parts snap onto the beam as they are dragged near it, and a click
+  on a mirror or splitter folds the beam there.
+- **Build a bench from a photo.** Sketch the beam path over a photo of a real
+  setup, mark the parts on it, and the bench is assembled along that path.
+- **Who edited.** Each browser is asked once for a name, and a project's card
+  shows who edited it last and when. It is attribution on a trusted network, not
+  access control.
+- **Loading feedback.** Opening a bench, switching to Detailed and undo/redo in
+  Detailed show what they are waiting for. The indicator appears only after
+  0.3 s, so quick actions never flash it.
+
+### Changed
+
+- **Commands for the conversion tools** (run from the repository root):
+
+  | Before | Now |
+  |---|---|
+  | `python cad_importer.py …` | `python -m opticaltwin.cad_importer …` |
+  | `python usd_to_web.py` | `python -m opticaltwin.usd_to_web` |
+  | `python optical_bench_prototype.py` | `python scripts/optical_bench_prototype.py` |
+
+- **Code layout.** The core library is now the `opticaltwin/` package, the web
+  backend the `backend/` package with one module per area, examples live in
+  `scripts/` and every test in `tests/`. `python server.py` starts the app as
+  before. Code that imported a module directly (`import optics_lib`) now imports
+  it from the package (`from opticaltwin import optics_lib`).
+- **Tests run with pytest**: `pip install -r requirements-dev.txt` then
+  `python -m pytest tests/`.
+- **Moving parts is faster.** A drag saves once when it is released, and the beam
+  is retraced from cached part geometry instead of re-reading every asset.
+- **Switching a laser and placing a part are fast in Detailed mode.** Both used to
+  re-send the whole bench with every high-detail model: about 9 s and 45 MB on a
+  47-part bench. They now answer with only what changed (10 kB), in 0.06 s and
+  0.1 s.
+- **A clearer toolbar.** “LOD: LO/HI” is now a **Simple | Detailed** switch, the
+  laser button shows its state like a lamp (**● Laser on / ○ Laser off**), every
+  label follows the UI language, and dividers group the controls by purpose.
+
+### Removed
+
+- **`GET /api/projects/<name>/beam/paraxial`** and the server-side Gaussian
+  beam-width (ABCD) calculation behind it. Nothing in the app called it, and
+  focusing and beam-width physics are outside OpticalTwin's scope: beams are
+  planning lines.
+
+### Fixed
+
+- Deleting a selected pin with the Delete key now saves; the pin used to come
+  back after a reload.
+- A CAD import test that failed whenever `cadquery-ocp` was installed.
+
 ## [1.1.0] — 2026-09-23
 
 ### Added
@@ -130,6 +190,7 @@ Initial public release.
 - **glTF export** (`usd_to_web.py`) and a static, view-only viewer.
 - Shared-password access control via `OT_PASSWORD`, for use on a trusted LAN.
 
-[Unreleased]: https://github.com/itotlab-system/opticaltwin-core/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/itotlab-system/opticaltwin-core/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/itotlab-system/opticaltwin-core/compare/v1.1.0...v2.0.0
 [1.1.0]: https://github.com/itotlab-system/opticaltwin-core/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/itotlab-system/opticaltwin-core/releases/tag/v1.0.0

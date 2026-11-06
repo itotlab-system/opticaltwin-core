@@ -44,7 +44,7 @@ test("label a part, retype the label, and export it into the figure",
       const partName = (await first.locator(".nm").innerText()).trim();
 
       // --- label it ---
-      await page.getByRole("button", { name: "図注", exact: true }).click();
+      await page.getByTestId("callout-mode").click();
       await first.click();
       await expect(page.locator(".callout-item")).toHaveCount(1);
 

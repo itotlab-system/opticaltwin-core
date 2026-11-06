@@ -1,8 +1,10 @@
 import unittest
 import os
 
-import beam_tracer
+from opticaltwin import beam_tracer
 import server
+from backend import payload
+from backend import config
 from pxr import Gf, Usd, UsdGeom
 
 
@@ -354,7 +356,7 @@ class RealComponentIntegrationTests(unittest.TestCase):
         # empty prim, which surfaces as a confusing IndexError further down.
         missing = sorted({
             asset for _, asset, *_ in placements
-            if not os.path.exists(os.path.join(server.LIB_DIR, asset, "lo.usda"))
+            if not os.path.exists(os.path.join(config.LIB_DIR, asset, "lo.usda"))
         })
         if missing:
             self.skipTest(
@@ -368,13 +370,13 @@ class RealComponentIntegrationTests(unittest.TestCase):
         for name, asset, x, y, rotation in placements:
             prim = stage.DefinePrim(f"/Setup/{name}", "Xform")
             prim.GetReferences().AddReference(os.path.join(
-                server.LIB_DIR, asset, "lo.usda"
+                config.LIB_DIR, asset, "lo.usda"
             ))
             xform = UsdGeom.Xformable(prim)
             xform.AddTranslateOp().Set(Gf.Vec3d(x, y, 0))
             if rotation:
                 xform.AddRotateZOp().Set(rotation)
-        return server._project_components(stage, render_mode)
+        return payload._project_components(stage, render_mode)
 
     def test_real_standard_laser_and_mirror_assets_reflect(self):
         components = self._placed_components([
@@ -382,7 +384,7 @@ class RealComponentIntegrationTests(unittest.TestCase):
             ("Mirror", "Low_model/mirror_1in", 100, 0, 45),
         ])
 
-        segments = server._resolved_project_beam(
+        segments = payload._resolved_project_beam(
             None, {c["name"]: c for c in components}, []
         )
         self.assertEqual([c["type"] for c in components], ["laser", "mirror"])

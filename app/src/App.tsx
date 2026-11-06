@@ -19,31 +19,20 @@ import FigureExportDialog, {
 } from "./ui/FigureExportDialog";
 import { AnchorStore } from "./scene/anchors";
 import { composeFigure } from "./figureExport";
-import { createCalloutId, defaultCalloutText, visibleCallouts } from "./callouts";
-import { useSettings, moveViewportBg } from "./settings";
+import { visibleCallouts } from "./callouts";
+import { useSettings } from "./settings";
 import { api } from "./api";
 import { buildSnapshotFilename, downloadBlob } from "./snapshot";
 import { modelOptionsFor } from "./modelPicker";
 
-// Before:
-// import type { BeamNode, BeamSegment, Component, ParaxialSegment, ProjectData, ProjectSummary, Template } from "./types";
-
-// Added:
-// PinAnnotation is used for frontend-only 3D pin annotations.
 import type {
-  BeamNode,
   BeamSegment,
   Component,
   ComponentGroup,
   ComponentUpdate,
   FigureCallout,
   MovePayload,
-  PinAnnotation,
   ProjectData,
-  ProjectSummary,
-  LaserOption,
-  NewProjectStart,
-  Template,
 } from "./types";
 import { EMITTER_TYPES } from "./types";
 import { mergeMove, needsFullReload } from "./moveMerge";
@@ -56,113 +45,16 @@ import {
   withoutGroups,
 } from "./groups";
 
-// Added:
-// Preset colors for 3D pin annotations.
-// The selected color is used when creating a new pin.
-const PIN_COLOR_OPTIONS = [
-  { label: "Blue", value: "#4c8dff" },
-  { label: "Red", value: "#e5534b" },
-  { label: "Green", value: "#2ea043" },
-] as const;
-
-type PinEditorState = {
-  mode: "create" | "edit";
-  pin: PinAnnotation;
-  value: string;
-};
-
-function createPinId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  }
-
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
-// What Ctrl+C holds: component names *and* the project they were copied from,
-// since a paste can land in a different project. Kept in localStorage
-// so it also survives a reload or a second tab — the same place the browser's
-// own clipboard would put it.
-type Clipboard = { project: string; names: string[] };
-
-const CLIPBOARD_KEY = "ot.clipboard";
-
-function readClipboard(): Clipboard | null {
-  try {
-    const raw = localStorage.getItem(CLIPBOARD_KEY);
-    const c = raw ? JSON.parse(raw) : null;
-    if (!c || typeof c.project !== "string" || !Array.isArray(c.names)) return null;
-    const names = c.names.filter((n: unknown) => typeof n === "string");
-    return names.length ? { project: c.project, names } : null;
-  } catch {
-    return null;                       // unreadable or from an older version
-  }
-}
-
-function writeClipboard(c: Clipboard) {
-  try {
-    localStorage.setItem(CLIPBOARD_KEY, JSON.stringify(c));
-  } catch {
-    /* private mode / quota — the in-memory clipboard still works */
-  }
-}
-
-// Camera glyph for the snapshot button. Inline so it inherits the button's
-// colour (currentColor) and needs no asset request.
-function CameraIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d="M3 8.5h3.2l1.5-2.2h8.6l1.5 2.2H21a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1Z" />
-      <circle cx="12" cy="13.5" r="3.4" />
-    </svg>
-  );
-}
-
-/** Show/hide for the figure-label layer; struck through when it is hidden. */
-function EyeIcon({ off = false }: { off?: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d="M2 12s3.8-6 10-6 10 6 10 6-3.8 6-10 6S2 12 2 12Z" />
-      <circle cx="12" cy="12" r="3" />
-      {off && <path d="M4 20 20 4" />}
-    </svg>
-  );
-}
+import { readClipboard, writeClipboard, type Clipboard } from "./clipboard";
+import { CameraIcon, EyeIcon } from "./ui/icons";
+import { PIN_COLOR_OPTIONS, usePins } from "./hooks/usePins";
+import { useCallouts } from "./hooks/useCallouts";
+import { useGallery } from "./hooks/useGallery";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useBusy } from "./hooks/useBusy";
 
 export default function App() {
   const { t, setBgProject, editorName } = useSettings();
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [laserAssets, setLaserAssets] = useState<LaserOption[]>([]);
-  const [defaultBeamHeight, setDefaultBeamHeight] = useState(100);
   const [current, setCurrent] = useState<string | null>(null);   // null = gallery
   const [data, setData] = useState<ProjectData | null>(null);
   // Mirrors `data` for the debounced saves, which run outside render and would
@@ -187,7 +79,7 @@ export default function App() {
   const [browsingParts, setBrowsingParts] = useState(false);
   const [status, setStatus] = useState("");
   const [renderMode, setRenderMode] = useState<"lo" | "hi">("lo");
-  const [lodLoading, setLodLoading] = useState(false);
+  const { busy, busyVisible, runBusy } = useBusy();
   // The "build from a photo" screen, over the editor.
   const [photoOpen, setPhotoOpen] = useState(false);
   useEffect(() => { if (!current) setPhotoOpen(false); }, [current]);
@@ -208,43 +100,12 @@ export default function App() {
   const historyChain = useRef<Promise<void>>(Promise.resolve());
   const viewportRef = useRef<ViewportHandle>(null);
 
-  // Added:
-  // Local 3D pin annotations.
-  // This is frontend-only for now.
-  // Later, these pins should be loaded from and saved to the backend API.
-  const [pins, setPins] = useState<PinAnnotation[]>([]);
+  const {
+    pins, setPins, pinMode, setPinMode, selectedPinId, setSelectedPinId,
+    pinUserName, setPinUserName, pinColor, setPinColor, pinEditor, setPinEditor,
+    handleAddPinAt, handleDeletePin, handleMovePin, handleEditPin, savePinEditor,
+  } = usePins({ current, editorName, setSelection });
 
-  // Added:
-  // When true, clicking the breadboard creates a new pin.
-  const [pinMode, setPinMode] = useState(false);
-
-  // Added:
-  // Currently selected pin id.
-  const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
-
-  // Added:
-  // The user manually types the name shown on newly created pins. It starts
-  // as the name edits are recorded under, and follows it when that changes.
-  const [pinUserName, setPinUserName] = useState(editorName);
-  useEffect(() => setPinUserName(editorName), [editorName]);
-
-  // Added:
-  // Selected color for newly created pins.
-  const [pinColor, setPinColor] = useState<string>(PIN_COLOR_OPTIONS[0].value);
-  const [pinEditor, setPinEditor] = useState<PinEditorState | null>(null);
-
-  // ----- figure callouts (the paper-figure labels) -----
-  // They live in `data`, not in a state of their own, so that every full
-  // payload — a delete, an undo, a reload — brings the authoritative list with
-  // it. Held separately they went stale the moment a labelled part was
-  // deleted, and the next drag then saved a label pointing at nothing.
-  // When on, clicking a part labels it instead of selecting it.
-  const [calloutMode, setCalloutMode] = useState(false);
-  const [selectedCalloutId, setSelectedCalloutId] = useState<string | null>(null);
-  // The whole layer on/off, on top of each label's own `hidden` flag. A bench
-  // being *arranged* wants the parts unobstructed; the labels are for the
-  // figure. What is on screen is what gets exported, so this switches both.
-  const [calloutsVisible, setCalloutsVisible] = useState(true);
   const [figureExport, setFigureExport] = useState<FigureExportSettings | null>(null);
   const [exporting, setExporting] = useState(false);
   // Where every labelled part currently is on screen. One store for the app's
@@ -252,13 +113,13 @@ export default function App() {
   // it back, so it must not be replaced on re-render.
   const anchorStore = useRef(new AnchorStore()).current;
 
-  async function refreshGallery() {
-    const r = await api.listProjects();
-    setProjects(r.projects);
-    setTemplates(r.templates);
-    setLaserAssets(r.lasers ?? []);
-    if (r.defaultBeamHeight) setDefaultBeamHeight(r.defaultBeamHeight);
-  }
+  const {
+    projects, templates, laserAssets, defaultBeamHeight,
+    refreshGallery, createProject, deleteProject, duplicateProject, fileProject,
+    renameProject,
+  } = useGallery({
+    t, current, setCurrent, openProject, openPhotoBuilder: () => setPhotoOpen(true),
+  });
 
   // A leg that no longer exists (parts moved, a part was deleted) must not
   // keep an editor open over empty space.
@@ -279,16 +140,13 @@ export default function App() {
     pasteStep.current = 0;
 
     if (!current) {
-      // Before:
-      // setData(null); setSelected(null);
       setData(null);
       setSelection([]);
       setEnteredGroupId(null);
       setSelectedSegment(null);
       setViewportReady(false);
 
-      // Added:
-      // Clear pin-related state when returning to the project gallery.
+      // Pins and labelling modes belong to the bench being left.
       setPins([]);
       setPinMode(false);
       setSelectedPinId(null);
@@ -307,14 +165,11 @@ export default function App() {
       setRenderMode("lo");
       setStatus(t("loading"));
       setViewportReady(false);
-      const d = await api.getProject(current, "lo");
+      const d = await runBusy(t("busy_opening"), () => api.getProject(current, "lo"));
       setData(d);
       setAsset(d.library[0] ?? "");
       setStatus(t("components_n", { n: d.components.length }));
 
-      // Added:
-      // Load pins from project data if the backend provides them.
-      // If not, start with an empty pin list.
       setPins(d.pins ?? []);
       setPinMode(false);
       setSelectedPinId(null);
@@ -330,72 +185,23 @@ export default function App() {
     setCurrent(name);
   }
 
-  // `folder` is the gallery tab that was open — a project made while standing
-  // in a folder is filed there. Filed before the gallery refreshes, so the card
-  // never flashes up unfiled.
-  async function createProject(
-    name: string, template: string, folder = "", start: NewProjectStart = {},
-  ) {
-    const r = await api.createProject(name, template, start);
-    if (folder) await api.setProjectMeta(r.name, { folder });
-    await refreshGallery();
-    openProject(r.name);
-    if (template === "from_photo") setPhotoOpen(true);
-  }
-
-  async function deleteProject(name: string) {
-    if (!confirm(t("delete_confirm", { name }))) return;
-    await api.removeProject(name);
-    moveViewportBg(name, null);
-    await refreshGallery();
-  }
-
-  // Copies the whole setup under <name>_copy — a safe place to try changes.
-  async function duplicateProject(name: string) {
-    const r = await api.duplicateProject(name);
-    // The copy inherits the original's background, like its folder.
-    moveViewportBg(name, r.name, true);
-    await refreshGallery();
-  }
-
-  // Move a project into a folder, or archive it. Filing only — it never
-  // touches setup.usda, so a card's "last edited" and its thumbnail stand.
-  async function fileProject(
-    name: string,
-    meta: { folder?: string; archived?: boolean }
-  ) {
-    await api.setProjectMeta(name, meta);
-    await refreshGallery();
-  }
-
-  async function renameProject(name: string, newName: string) {
-    const r = await api.renameProject(name, newName);
-    moveViewportBg(name, r.name);
-    await refreshGallery();
-    // A pending copy still points at the old folder; follow it across.
-    const clip = readClipboard();
-    if (clip?.project === name) writeClipboard({ ...clip, project: r.name });
-    if (current === name) setCurrent(r.name);
-  }
-
   async function toggleRenderMode() {
-    if (!current || lodLoading) return;
+    if (!current || busy) return;
     const next = renderMode === "lo" ? "hi" : "lo";
+    const label = next === "hi" ? t("detail_full") : t("detail_simple");
     setIsPlacing(false);
-    setLodLoading(true);
-    setStatus(`Loading ${next.toUpperCase()} models…`);
+    setStatus(t("busy_detail", { mode: label }));
     try {
-      const d = await api.getProject(current, next);
+      const d = await runBusy(t("busy_detail", { mode: label }),
+                              () => api.getProject(current, next));
       setRenderMode(next);
       setData(d);
-      // Hi/lo swaps can drop parts that have no model at that detail level.
+      // A detail swap can drop parts that have no model at that level.
       const present = new Set(d.components.map((c) => c.name));
       setSelection((prev) => prev.filter((name) => present.has(name)));
-      setStatus(`${next.toUpperCase()} · ${d.components.length} components`);
+      setStatus(`${label} · ${t("components_n", { n: d.components.length })}`);
     } catch {
-      setStatus(`Could not load ${next.toUpperCase()} models`);
-    } finally {
-      setLodLoading(false);
+      setStatus(t("busy_detail_failed", { mode: label }));
     }
   }
 
@@ -441,49 +247,6 @@ export default function App() {
     }
   }
 
-  // ----- figure callouts -----
-  async function saveCallouts(next: FigureCallout[]) {
-    setData((d) => (d ? { ...d, callouts: next } : d));   // optimistic
-    if (!current) return;
-    const r = await api.updateCallouts(current, next);
-    setData((d) => (
-      d ? { ...d, callouts: r.callouts, canUndo: r.canUndo, canRedo: r.canRedo } : d
-    ));
-  }
-
-  function addCalloutFor(name: string) {
-    // One label per part: a second click on an already-labelled part selects
-    // the label it has instead of stacking an identical box on top of it.
-    const existing = callouts.find((c) => c.target === name);
-    if (existing) {
-      setSelectedCalloutId(existing.id);
-      return;
-    }
-    const callout: FigureCallout = {
-      id: createCalloutId(),
-      target: name,
-      text: defaultCalloutText(components.find((c) => c.name === name)),
-      // Up and to the right of the part, clear of the bench, where a figure
-      // usually wants it; the user drags it wherever the picture needs.
-      dx: 90,
-      // Stepped down for each label already up, so labelling four parts in a
-      // row doesn't bury three boxes under the fourth; they are dragged into
-      // place afterwards anyway.
-      dy: -70 - 30 * (callouts.length % 4),
-    };
-    void saveCallouts([...callouts, callout]);
-    setSelectedCalloutId(callout.id);
-  }
-
-  function updateCallout(next: FigureCallout) {
-    void saveCallouts(callouts.map((c) => (c.id === next.id ? next : c)));
-  }
-
-  function deleteCallout(id: string) {
-    setSelectedCalloutId((prev) => (prev === id ? null : prev));
-    void saveCallouts(callouts.filter((c) => c.id !== id));
-  }
-
   // ----- editor state -----
   const components = data?.components ?? [];
   const sorted = [...components].sort((a, b) => a.x - b.x);
@@ -491,6 +254,11 @@ export default function App() {
   const beam: BeamSegment[] = data?.beam ?? [];
   const groups: ComponentGroup[] = data?.groups ?? [];
   const callouts: FigureCallout[] = data?.callouts ?? [];
+  const {
+    calloutMode, setCalloutMode, selectedCalloutId, setSelectedCalloutId,
+    calloutsVisible, setCalloutsVisible,
+    addCalloutFor, updateCallout, deleteCallout,
+  } = useCallouts({ current, callouts, components, setData });
   const selected = selection.length === 1 ? selection[0] : null;
   // Sources and whether any is emitting. `laserOn` is absent on lasers placed
   // before the switch existed, which means on. The switch covers every emitter
@@ -502,8 +270,10 @@ export default function App() {
     if (!current) return;
     const next = !lasersOn;
     setStatus(next ? t("laser_on") : t("laser_off"));
-    const updated = await api.switchLasers(current, next, undefined, renderMode);
-    setData(updated);
+    // A light payload (transforms + beam): merged, so no mesh is rebuilt.
+    const updated = await runBusy(t("busy_laser"),
+      () => api.switchLasers(current, next, undefined, renderMode));
+    await applyMove(updated);
     // With the source off there is no leg left to edit.
     if (!next) setSelectedSegment(null);
   }
@@ -823,7 +593,7 @@ export default function App() {
     if (!current) return;
     await flushPendingSave();          // never rewind past an unsaved move
     await queueHistoryStep(async () => {
-      const d = await api.undo(current, renderMode);
+      const d = await runBusy(t("busy_undo"), () => api.undo(current, renderMode));
       applyHistoryStep(d, d.stepped ? t("undone") : t("undo_empty"));
     });
   }
@@ -832,7 +602,7 @@ export default function App() {
     if (!current) return;
     await flushPendingSave();
     await queueHistoryStep(async () => {
-      const d = await api.redo(current, renderMode);
+      const d = await runBusy(t("busy_redo"), () => api.redo(current, renderMode));
       applyHistoryStep(d, d.stepped ? t("redone") : t("redo_empty"));
     });
   }
@@ -907,72 +677,6 @@ export default function App() {
     await pasteComponents(selection, 1);
   }
 
-  async function savePins(nextPins: PinAnnotation[]) {
-    if (!current) return;
-    await api.updatePins(current, nextPins);
-  }
-
-  async function handleAddPinAt(x: number, y: number, z: number) {
-    const authorName = pinUserName.trim();
-
-    if (!authorName) {
-      window.alert("Please enter your name before placing a pin.");
-      return;
-    }
-
-    const newPin: PinAnnotation = {
-      id: createPinId(),
-      label: "New pin",
-      x,
-      y,
-      z,
-      authorName,
-      color: pinColor,
-      size: 1,
-      createdAt: new Date().toISOString(),
-    };
-
-    setSelection([]);
-    setPinMode(false);
-    setPinEditor({ mode: "create", pin: newPin, value: newPin.label });
-  }
-
-  async function handleDeletePin(id: string) {
-    const ok = window.confirm("Delete this pin?");
-    if (!ok) return;
-
-    const nextPins = pins.filter((pin) => pin.id !== id);
-    setPins(nextPins);
-    setSelectedPinId(null);
-    await savePins(nextPins);
-  }
-
-  async function handleMovePin(id: string, x: number, y: number, z: number) {
-    const nextPins = pins.map((pin) => pin.id === id ? { ...pin, x, y, z } : pin);
-    setPins(nextPins);
-    await savePins(nextPins);
-  }
-
-  function handleEditPin(id: string) {
-    const pin = pins.find((item) => item.id === id);
-    if (!pin) return;
-
-    setPinEditor({ mode: "edit", pin, value: pin.label });
-  }
-
-  async function savePinEditor() {
-    if (!pinEditor) return;
-
-    const updatedPin = { ...pinEditor.pin, label: pinEditor.value };
-    const nextPins = pinEditor.mode === "create"
-      ? [...pins, updatedPin]
-      : pins.map((item) => item.id === updatedPin.id ? updatedPin : item);
-    setPins(nextPins);
-    setSelectedPinId(updatedPin.id);
-    setPinEditor(null);
-    await savePins(nextPins);
-  }
-
   function handleStartPlacing() {
     setPinMode(false);
     setIsPlacing(true);
@@ -1000,12 +704,15 @@ export default function App() {
   async function onPlace(point: THREE.Vector3, snap = true) {
     if (!current || !asset) return;
     setIsPlacing(false);
-    const r = await api.addComponent(current, asset, point.x, point.y, snap);
-    const d = await api.getProject(current, renderMode);
-    setData(d); setSelection([r.name]);
+    // The answer carries the new part itself; merging it keeps every other
+    // mesh as it is instead of re-fetching (and rebuilding) the whole bench.
+    const r = await runBusy(t("busy_placing"),
+      () => api.addComponent(current, asset, point.x, point.y, snap, renderMode));
+    const d = await applyMove(r);
+    setSelection([r.name]);
     setStatus(r.snapped
       ? t("placed_on_beam")
-      : t("components_n", { n: d.components.length }));
+      : t("components_n", { n: d?.components.length ?? 0 }));
   }
 
   // Removes everything currently selected — one part, or every member of a
@@ -1041,100 +748,15 @@ export default function App() {
     setData(d);
   }
 
-  // Keyboard shortcuts: Delete → remove selected, Escape → deselect.
-  useEffect(() => {
-    if (!current) return;
-
-    function onKey(e: KeyboardEvent) {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-
-      // Added:
-      // Delete the selected pin first if a pin is selected.
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedPinId) {
-        const ok = window.confirm("Delete this pin?");
-        if (!ok) return;
-
-        setPins((prev) => prev.filter((pin) => pin.id !== selectedPinId));
-        setSelectedPinId(null);
-        return;
-      }
-
-      if ((e.key === "Delete" || e.key === "Backspace") && selection.length > 0) {
-        void onDelete();
-        return;
-      }
-
-      // Ctrl/Cmd + G groups the selection, Ctrl/Cmd + Shift + G ungroups it.
-      // Both are claimed by the browser's find-again, so stop the default.
-      if ((e.ctrlKey || e.metaKey) && (e.key === "g" || e.key === "G")) {
-        e.preventDefault();
-        if (e.shiftKey) void ungroup();
-        else void createGroup();
-        return;
-      }
-
-      // Ctrl/Cmd + Z rewinds a step, Ctrl/Cmd + Shift + Z (or Ctrl+Y) replays it.
-      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) {
-        e.preventDefault();
-        if (e.shiftKey) void onRedo();
-        else void onUndo();
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || e.key === "Y")) {
-        e.preventDefault();
-        void onRedo();
-        return;
-      }
-
-      // Ctrl/Cmd + C / V / D — copy, paste, duplicate the selection.
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-        const key = e.key.toLowerCase();
-        // Leave the browser's own copy alone when the user is copying text.
-        const textSelected = !(window.getSelection()?.isCollapsed ?? true);
-        if (key === "c" && selection.length > 0 && !textSelected) {
-          e.preventDefault();
-          onCopy();
-          return;
-        }
-        if (key === "v" && clipboard) {
-          e.preventDefault();
-          void onPaste();
-          return;
-        }
-        if (key === "d" && selection.length > 0) {
-          e.preventDefault();          // Chrome's "bookmark this page"
-          void onDuplicateSelection();
-          return;
-        }
-      }
-
-      if (e.key === "Escape") {
-        if (isPlacing) {
-          setIsPlacing(false);
-          setStatus(t("components_n", { n: components.length }));
-        } else if (calloutMode) {
-          // Leaves the labels on screen — Esc ends the labelling mode, it does
-          // not undo the figure.
-          setCalloutMode(false);
-          setSelectedCalloutId(null);
-        } else if (enteredGroupId) {
-          // Step back out of the group instead of dropping the selection.
-          const group = groups.find((g) => g.id === enteredGroupId);
-          setEnteredGroupId(null);
-          setSelection(group ? group.members : []);
-        } else {
-          setSelection([]);
-        }
-        setSelectedPinId(null);
-        setPinMode(false);
-      }
-    }
-
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [current, selection, selectedPinId, t, isPlacing, components,
-      renderMode, groups, enteredGroupId, clipboard, data, calloutMode]);
+  useKeyboardShortcuts({
+    current, data, renderMode, t, components, groups,
+    selection, setSelection, enteredGroupId, setEnteredGroupId, clipboard,
+    isPlacing, setIsPlacing, setStatus,
+    calloutMode, setCalloutMode, setSelectedCalloutId,
+    selectedPinId, setSelectedPinId, pins, setPinMode, onDeletePin: handleDeletePin,
+    onDelete, createGroup, ungroup, onUndo, onRedo, onCopy, onPaste,
+    onDuplicateSelection,
+  });
 
   // ----- render -----
   if (!current) {
@@ -1227,14 +849,32 @@ export default function App() {
           </button>
         </div>
 
-        <button
-          className={`toggle ${renderMode === "hi" ? "active" : "ghost"}`}
-          onClick={toggleRenderMode}
-          disabled={lodLoading}
-          title="Switch every component in this project between low and high detail"
-        >
-          LOD: {renderMode.toUpperCase()}
-        </button>
+        <span className="tb-sep" aria-hidden="true" />
+
+        {/* How much detail every part is drawn with. Named for what the user
+            sees ("Simple" stand-in shapes vs the "Detailed" real CAD), not for
+            the mechanism: "LOD: LO/HI" meant nothing to people who don't make
+            3D software. The tooltip says what Detailed costs. */}
+        <div className="seg-toggle" role="group" aria-label={t("detail_group")} title={t("detail_hint")}>
+          <button
+            type="button"
+            className={renderMode === "lo" ? "active" : ""}
+            aria-pressed={renderMode === "lo"}
+            disabled={busy !== null}
+            onClick={() => { if (renderMode !== "lo") void toggleRenderMode(); }}
+          >
+            {t("detail_simple")}
+          </button>
+          <button
+            type="button"
+            className={renderMode === "hi" ? "active" : ""}
+            aria-pressed={renderMode === "hi"}
+            disabled={busy !== null}
+            onClick={() => { if (renderMode !== "hi") void toggleRenderMode(); }}
+          >
+            {t("detail_full")}
+          </button>
+        </div>
 
         {/* The actual laser switch. Off means the source emits nothing, so
             there is no beam anywhere and nothing to shape; on brings it back
@@ -1242,21 +882,18 @@ export default function App() {
             action — the old button said "OFF" while the beam was showing. */}
         {lasers.length > 0 && (
           <button
-            className={`toggle ${lasersOn ? "active" : "ghost"}`}
+            className={`toggle laser-toggle ${lasersOn ? "active" : "ghost"}`}
             onClick={toggleLasers}
             aria-pressed={lasersOn}
-            title={lasersOn
-              ? `Switch off ${lasers.length > 1 ? "the lasers" : "the laser"}`
-              : `Switch on ${lasers.length > 1 ? "the lasers" : "the laser"}`}
+            title={lasersOn ? t("laser_switch_off") : t("laser_switch_on")}
           >
-            Laser: {lasersOn ? "ON" : "OFF"}
+            <span className={`laser-dot${lasersOn ? " on" : ""}`} aria-hidden="true" />
+            {lasersOn ? t("laser_is_on") : t("laser_is_off")}
           </button>
         )}
-        {/*
-          Added:
-          Toggle Add pin mode.
-          When enabled, the next click on the breadboard creates a pin.
-        */}
+
+        <span className="tb-sep" aria-hidden="true" />
+        {/* Pin mode: the next click on the board places a discussion pin. */}
         <button
           className={pinMode ? "primary" : ""}
           onClick={() => {
@@ -1265,15 +902,10 @@ export default function App() {
             setSelection([]);
             setSelectedPinId(null);
           }}
-          title="Place a 3D annotation pin on the breadboard"
+          title={t("pin_hint")}
         >
-          {pinMode ? "Cancel pin" : "Add pin"}
+          {pinMode ? t("pin_cancel") : t("pin_add")}
         </button>
-        {/*
-          Icon-only: the toolbar is crowded, and a camera reads faster than the
-          word. aria-label keeps the accessible name so screen readers and the
-          e2e selectors still find it by "Snapshot".
-        */}
         {/*
           One control, two segments — editing the labels and showing them are
           different questions ("let me label parts" vs "keep them out of my way
@@ -1284,8 +916,9 @@ export default function App() {
           every project, so the one bench that had been labelled looked like the
           only one that could be.
         */}
-        <div className="callout-toggle" role="group" aria-label="図注">
+        <div className="callout-toggle" role="group" aria-label={t("callouts_label")}>
           <button
+            data-testid="callout-mode"
             className={calloutMode ? "active" : "ghost"}
             aria-pressed={calloutMode}
             onClick={() => {
@@ -1300,29 +933,27 @@ export default function App() {
               setSelection([]);
               setSelectedPinId(null);
             }}
-            title={calloutMode
-              ? "図注モードを終了（Esc）"
-              : "部品をクリックして図注ラベルを付ける（論文用）"}
+            title={calloutMode ? t("callouts_off_hint") : t("callouts_on_hint")}
           >
-            図注
+            {t("callouts_label")}
           </button>
           <button
             className={calloutsVisible ? "ghost" : "active"}
             aria-pressed={!calloutsVisible}
-            aria-label="図注ラベルの表示 / 非表示"
+            aria-label={t("callouts_eye")}
             onClick={() => {
               setCalloutsVisible((v) => {
                 if (v) { setCalloutMode(false); setSelectedCalloutId(null); }
                 return !v;
               });
             }}
-            title={calloutsVisible
-              ? "図注ラベルを隠す（書き出しにも反映）"
-              : "図注ラベルを表示"}
+            title={calloutsVisible ? t("callouts_hide") : t("callouts_show")}
           >
             <EyeIcon off={!calloutsVisible} />
           </button>
         </div>
+
+        <span className="tb-sep" aria-hidden="true" />
         <button
           className="ghost" data-testid="open-photo"
           onClick={() => setPhotoOpen(true)}
@@ -1330,6 +961,9 @@ export default function App() {
         >
           {t("photo_button")}
         </button>
+        {/* Icon-only: the toolbar is crowded, and a camera reads faster than
+            the word. aria-label keeps the accessible name, so screen readers
+            and the e2e selectors still find it by "Snapshot". */}
         <button
           className="iconbtn ghost"
           onClick={() => setFigureExport(figureExport ?? DEFAULT_FIGURE_SETTINGS)}
@@ -1341,22 +975,14 @@ export default function App() {
         </button>
         {pinMode && (
           <div className="pin-add-panel">
-            {/*
-              Added:
-              The user enters the author name only while Add pin mode is active.
-            */}
             <input
               className="pin-user-input"
               value={pinUserName}
               onChange={(e) => setPinUserName(e.target.value)}
-              placeholder="Your name"
-              title="Name shown on newly created pins"
+              placeholder={t("pin_name_placeholder")}
+              title={t("pin_name_title")}
             />
 
-            {/*
-              Added:
-              The user chooses the color for the next pin only while Add pin mode is active.
-            */}
             <div className="pin-color-buttons">
               {PIN_COLOR_OPTIONS.map((option) => (
                 <button
@@ -1420,12 +1046,12 @@ export default function App() {
           />
         )}
         <div className="viewport">
-          {lodLoading && (
+          {busyVisible && busy && (
             <div className="lod-loading" role="status" aria-live="polite">
               <div className="lod-loading-card">
                 <span className="lod-ring" aria-hidden="true" />
                 <div className="lod-loading-copy">
-                  <span>Loading high models…</span>
+                  <span>{busy}</span>
                 </div>
               </div>
             </div>

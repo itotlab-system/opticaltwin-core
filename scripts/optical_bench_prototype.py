@@ -8,15 +8,21 @@ script is just a thin caller.
 
 For a fuller, folded example see the `slm_imaging` recipe in templates.py.
 
-Run:  python optical_bench_prototype.py
+Run:  python scripts/optical_bench_prototype.py
 Out:  components/<component>/lo.usda, setups/optical_bench.usda
 """
 
 import os
-import optics_lib as ol
-import usd_utility as uu
+import sys
 
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Run as `python scripts/<name>.py` from the repository root: put the root on
+# the path so the opticaltwin package imports without installing anything.
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT_DIR)
+
+from opticaltwin import optics_lib as ol  # noqa: E402
+from opticaltwin import usd_utility as uu  # noqa: E402
+
 LIB_DIR = os.path.join(ROOT_DIR, "components")
 SETUPS_DIR = os.path.join(ROOT_DIR, "setups")
 os.makedirs(LIB_DIR, exist_ok=True)
