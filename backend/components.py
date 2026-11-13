@@ -1,7 +1,5 @@
-"""Reading a component asset: meshes, primitives, materials, pose and the
-beam metadata a laser or detector carries."""
-
 import os
+from typing import TypedDict
 
 import numpy as np
 from pxr import Usd, UsdGeom, Gf
@@ -13,8 +11,15 @@ from backend import config
 
 _ROD_SHOULDER_CACHE = {}
 
+ROD_POSITIVE_INNER_THREAD = "CADMesh_002"
+ROD_NEGATIVE_INNER_THREAD = "CADMesh_004"
+
+
+class ModelPose(TypedDict):
+    modelRotation: list[float]
+    rotationCenter: list[float]
+
 def _inherited_material_value(prim, component_prim, name):
-    """Read the closest optics material override within a component subtree."""
     current = prim
     while current.IsValid():
         attr = current.GetAttribute(f"optics:{name}")
@@ -26,24 +31,17 @@ def _inherited_material_value(prim, component_prim, name):
     return None
 
 def _transform_points(points, matrix):
-    """Apply a Gf.Matrix4d to an (n, 3) array as Gf does: row vectors, p * M.
-
-    Every matrix reaching here is affine (USD xform ops), so the homogeneous
-    w stays 1 and needs no divide.
-    """
+    # Gf.Matrix4d uses row vectors: p' = p * M.
     m = np.array(matrix, dtype=np.float64)
+    if not np.allclose(m[:, 3], (0.0, 0.0, 0.0, 1.0)):
+        raise ValueError(f"expected an affine transform, got last column {m[:, 3].tolist()}")
     return points @ m[:3, :3] + m[3, :3]
 
 def _fan_triangles(counts, face_indices):
-    """Fan-triangulate polygon faces, keeping the authored winding order.
-
-    Face (v0, v1, ..., vn-1) becomes (v0, v1, v2), (v0, v2, v3), ...; faces
-    with fewer than three vertices contribute nothing.
-    """
     counts = np.asarray(counts, dtype=np.int64)
     faces = np.asarray(face_indices, dtype=np.int64)
     if counts.size and (counts == 3).all() and faces.size == counts.size * 3:
-        return faces.astype(np.int32)  # already triangles: nothing to split
+        return faces.astype(np.int32)
     starts = np.concatenate(([0], np.cumsum(counts)[:-1]))
     per_face = np.maximum(counts - 2, 0)
     total = int(per_face.sum())
@@ -56,14 +54,7 @@ def _fan_triangles(counts, face_indices):
     )
     return triangles.ravel().astype(np.int32)
 
-def _component_mesh_arrays(stage, component_prim, *, beam_only=False):
-    """Mesh data in component-local space, with points/indices as NumPy arrays.
-
-    Vectorised: high-detail CAD parts carry ~10^6 vertices, and transforming
-    and rounding them one by one in Python was the bulk of a high-detail
-    payload. The arrays are compact enough to keep in a cross-request cache;
-    `_mesh_arrays_to_json` turns them into the lists the client receives.
-    """
+def _component_mesh_arrays(stage, component_prim, *, transparent_points_only=False):
     meshes = []
     xcache = UsdGeom.XformCache()
     component_to_world = xcache.GetLocalToWorldTransform(component_prim)
@@ -75,7 +66,7 @@ def _component_mesh_arrays(stage, component_prim, *, beam_only=False):
 
         usd_mesh = UsdGeom.Mesh(prim)
         display_opacity = usd_mesh.GetDisplayOpacityAttr().Get() or [1.0]
-        if beam_only and not float(display_opacity[0]) < 1.0:
+        if transparent_points_only and not float(display_opacity[0]) < 1.0:
             continue
         points = usd_mesh.GetPointsAttr().Get() or []
         counts = usd_mesh.GetFaceVertexCountsAttr().Get() or []
@@ -83,17 +74,14 @@ def _component_mesh_arrays(stage, component_prim, *, beam_only=False):
         if not points or not counts or not face_indices:
             continue
 
-        # Two steps, mesh -> world -> component, in the same order as the
-        # per-point Gf code this replaces, so rounded output is unchanged.
         mesh_to_world = xcache.GetLocalToWorldTransform(prim)
         world_points = _transform_points(np.asarray(points, dtype=np.float64), mesh_to_world)
         local_points = np.round(_transform_points(world_points, world_to_component), 6)
 
-        if beam_only:
+        if transparent_points_only:
             meshes.append({"points": local_points, "opacity": float(display_opacity[0])})
             continue
 
-        # Three.js consumes triangle indices.
         triangles = _fan_triangles(counts, face_indices)
 
         display_color = usd_mesh.GetDisplayColorAttr().Get() or [(0.6, 0.7, 0.8)]
@@ -115,9 +103,7 @@ def _component_mesh_arrays(stage, component_prim, *, beam_only=False):
 
     return meshes
 
-def _mesh_arrays_to_json(meshes):
-    """Fresh JSON-ready copies of `_component_mesh_arrays` output (lists, not
-    arrays), so a cached array set is never shared with a response."""
+def _fresh_mesh_lists(meshes):
     out = []
     for mesh in meshes:
         data = dict(mesh)
@@ -127,14 +113,14 @@ def _mesh_arrays_to_json(meshes):
         out.append(data)
     return out
 
-def _component_meshes(stage, component_prim, *, beam_only=False):
-    """Read local mesh data; beam-only reads need transparent points, not faces."""
-    return _mesh_arrays_to_json(
-        _component_mesh_arrays(stage, component_prim, beam_only=beam_only)
+def _component_meshes(stage, component_prim, *, transparent_points_only=False):
+    return _fresh_mesh_lists(
+        _component_mesh_arrays(
+            stage, component_prim, transparent_points_only=transparent_points_only
+        )
     )
 
 def _component_primitives(stage, component_prim):
-    """Serialize analytic USD shapes without converting the source to Mesh."""
     primitives = []
     xcache = UsdGeom.XformCache()
     component_to_world = xcache.GetLocalToWorldTransform(component_prim)
@@ -175,8 +161,7 @@ def _component_primitives(stage, component_prim):
 
         primitive_to_world = xcache.GetLocalToWorldTransform(prim)
         primitive_to_component = primitive_to_world * world_to_component
-        # Gf uses row-vector matrices. Flattening rows directly produces the
-        # column-major element order consumed by THREE.Matrix4.fromArray().
+        # Gf matrices are row-vector, so row-major flattening is the column-major order THREE.Matrix4.fromArray() expects.
         primitive["matrix"] = [
             round(float(primitive_to_component[row][column]), 9)
             for row in range(4)
@@ -208,17 +193,11 @@ def _component_primitives(stage, component_prim):
     return primitives
 
 def _rod_thread_shoulder_offsets(component_prim):
-    """Return the two X positions where a Rod's threads meet CADMesh_001.
-
-    Rod hi assets are split into a central body (CADMesh_001), inner thread
-    sections (CADMesh_002/004), and outer thread sections (003/005).  Reading
-    the inner sections also works when CADMesh_001 is hidden for inspection.
-    """
     if component_prim.GetName() != "Rod":
         return None
 
-    positive = component_prim.GetChild("CADMesh_002")
-    negative = component_prim.GetChild("CADMesh_004")
+    positive = component_prim.GetChild(ROD_POSITIVE_INNER_THREAD)
+    negative = component_prim.GetChild(ROD_NEGATIVE_INNER_THREAD)
     if not positive.IsValid() or not negative.IsValid():
         return None
 
@@ -233,7 +212,6 @@ def _rod_thread_shoulder_offsets(component_prim):
     }
 
 def _rod_asset_shoulder_offsets(asset):
-    """Read stable Rod alignment metadata for both render modes."""
     if not asset or not asset.lower().startswith("rod/"):
         return None
     component_name = uu.get_component_name(asset)
@@ -269,14 +247,7 @@ def _rod_asset_shoulder_offsets(asset):
     _ROD_SHOULDER_CACHE[path] = (modified, result)
     return result
 
-def _component_model_pose(stage, component_prim):
-    """Return asset-authored rotations and the geometry center they pivot on.
-
-    Project placement transforms live on the referencing prim and are handled
-    separately by ``x/y/z/rotZ``.  These values come from the component asset
-    itself, so editing xformOp:rotateX/Y/Z in hi.usda or lo.usda changes the
-    model orientation without moving its optical center in the viewport.
-    """
+def _component_model_pose(stage, component_prim) -> ModelPose:
     rotations = []
     for axis in ("X", "Y", "Z"):
         attr = component_prim.GetAttribute(f"xformOp:rotate{axis}")
@@ -315,7 +286,6 @@ def _component_model_pose(stage, component_prim):
     }
 
 def _component_asset_name(component_prim):
-    """Return the catalogue asset that contributes this referenced prim."""
     library_root = os.path.realpath(config.LIB_DIR)
     for spec in component_prim.GetPrimStack():
         identifier = spec.layer.realPath or spec.layer.identifier
@@ -337,43 +307,42 @@ def _component_asset_name(component_prim):
     return None
 
 def _beam_physics_metadata(component):
-    """Derive ray-tracing dimensions from the actual serialized USD asset."""
     attrs = component.get("attrs", {})
     result = {}
 
     if component.get("type") in beam_tracer.EMITTER_TYPES:
-        # Prefer an explicitly detected output-aperture center. Fall back to
-        # the positive-X CAD envelope for older laser assets.
-        emission_offset = attrs.get("emissionOffset_mm")
-        size_x = attrs.get("sizeX_mm")
-        if emission_offset is not None:
-            result["emissionOffset_mm"] = float(emission_offset)
-        elif size_x is not None:
-            result["emissionOffset_mm"] = float(size_x) / 2.0
-        else:
-            result["emissionOffset_mm"] = LASER_APERTURE_OFFSET_MM
+        result["emissionOffset_mm"] = _laser_emission_offset(attrs)
         for key in ("emissionCenterY_mm", "emissionCenterZ_mm"):
             if attrs.get(key) is not None:
                 result[key] = float(attrs[key])
 
-    # CAD optical plates are commonly represented by a transparent mesh. Its
-    # local-space bounds are more reliable than a generic 1-inch fallback.
+    result.update(_optical_bounds_from_transparent_meshes(component.get("meshes", [])))
+    return result
+
+def _laser_emission_offset(attrs):
+    if attrs.get("emissionOffset_mm") is not None:
+        return float(attrs["emissionOffset_mm"])
+    if attrs.get("sizeX_mm") is not None:
+        return float(attrs["sizeX_mm"]) / 2.0
+    return LASER_APERTURE_OFFSET_MM
+
+def _optical_bounds_from_transparent_meshes(meshes):
     optical_points = [
         point
-        for mesh in component.get("meshes", [])
+        for mesh in meshes
         if float(mesh.get("opacity", 1.0)) < 1.0
         for point in mesh.get("points", [])
     ]
-    if optical_points:
-        ys = [float(point[1]) for point in optical_points]
-        zs = [float(point[2]) for point in optical_points]
-        result.update({
-            "activeCenterY_mm": (min(ys) + max(ys)) / 2.0,
-            "activeCenterZ_mm": (min(zs) + max(zs)) / 2.0,
-            "activeHalfY_mm": (max(ys) - min(ys)) / 2.0,
-            "activeHalfZ_mm": (max(zs) - min(zs)) / 2.0,
-        })
-    return result
+    if not optical_points:
+        return {}
+    ys = [float(point[1]) for point in optical_points]
+    zs = [float(point[2]) for point in optical_points]
+    return {
+        "activeCenterY_mm": (min(ys) + max(ys)) / 2.0,
+        "activeCenterZ_mm": (min(zs) + max(zs)) / 2.0,
+        "activeHalfY_mm": (max(ys) - min(ys)) / 2.0,
+        "activeHalfZ_mm": (max(zs) - min(zs)) / 2.0,
+    }
 
 LASER_APERTURE_OFFSET_MM = 43.0
 

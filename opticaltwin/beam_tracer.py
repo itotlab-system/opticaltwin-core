@@ -639,7 +639,7 @@ def _collinear(a, b, tolerance=1e-3):
     return _dot(da, db) > 1.0 - tolerance
 
 
-def merge_structural(segments, components_by_name):
+def fuse_legs_between_optics(segments, components_by_name):
     """Fuse legs that only meet at a mount, holder or post.
 
     The tracer ends a leg at every hit, which is right for the physics but

@@ -26,13 +26,13 @@ bp = Blueprint("beam_edit", __name__)
 def _traced_components(stage):
     """The tracer's view of the bench: placement + attrs + physics, by name.
 
-    beam_only, as the move payload traces: collision primitives and the
+    transparent_points_only, as the move payload traces: collision primitives and the
     points of transparent meshes, without opaque vertices or materials. Every
     drag already retraces the beam from this view, so snapping, folding and the
     photo build now see exactly the beam the user sees, and skip reading every
     mesh (0.5 s of a 0.56 s placement on a 47-part bench).
     """
-    return {c["name"]: c for c in _project_components(stage, "lo", beam_only=True)}
+    return {c["name"]: c for c in _project_components(stage, "lo", transparent_points_only=True)}
 
 def _snap_onto_beam(stage, comp_name, x, y):
     """Centre a just-dropped optic on the beam leg it was dropped on.
