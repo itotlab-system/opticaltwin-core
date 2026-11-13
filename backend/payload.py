@@ -40,11 +40,19 @@ from backend.pins import _pins
 from backend.placement import _placement_xform_values
 from backend.scene import _component_prims, _optics_attrs
 
-_MOVE_ASSET_CACHE_LIMIT = 64
+# Asset-local data (pose, attrs, mesh arrays, primitives) per asset file, kept
+# across requests. Library assets are immutable between catalogue imports and
+# the key carries path + mtime + size, so a re-imported asset misses on its
+# own. Without it every switch to high detail re-read every CAD asset
+# (~1M vertices on the 37-part Demo bench). Meshes are stored as NumPy arrays
+# (~50 MB for that whole hi bench) and copied out to lists per request.
+# The limit counts entries, and one asset can hold up to three (hi, lo, and the
+# beam-only read used by moves).
+_ASSET_CACHE_LIMIT = 128
 
-_MOVE_ASSET_CACHE = OrderedDict()
+_ASSET_CACHE = OrderedDict()
 
-_MOVE_ASSET_CACHE_LOCK = threading.Lock()
+_ASSET_CACHE_LOCK = threading.Lock()
 
 # optics:* attributes that live on the project's placement prim rather than in
 # the reusable component asset, and so are layered over the asset's own attrs.
@@ -57,21 +65,21 @@ PLACEMENT_ATTR_KEYS = (
     "laserOn",
 )
 
-def _move_asset_cache_get(key):
-    """Return cached immutable beam geometry and mark it as recently used."""
-    with _MOVE_ASSET_CACHE_LOCK:
-        cached = _MOVE_ASSET_CACHE.get(key)
+def _asset_cache_get(key):
+    """Return cached immutable asset data and mark it as recently used."""
+    with _ASSET_CACHE_LOCK:
+        cached = _ASSET_CACHE.get(key)
         if cached is not None:
-            _MOVE_ASSET_CACHE.move_to_end(key)
+            _ASSET_CACHE.move_to_end(key)
         return cached
 
-def _move_asset_cache_put(key, value):
-    """Keep a bounded LRU of asset-local data used to retrace moves."""
-    with _MOVE_ASSET_CACHE_LOCK:
-        _MOVE_ASSET_CACHE[key] = value
-        _MOVE_ASSET_CACHE.move_to_end(key)
-        while len(_MOVE_ASSET_CACHE) > _MOVE_ASSET_CACHE_LIMIT:
-            _MOVE_ASSET_CACHE.popitem(last=False)
+def _asset_cache_put(key, value):
+    """Keep a bounded LRU of asset-local data, shared by every request."""
+    with _ASSET_CACHE_LOCK:
+        _ASSET_CACHE[key] = value
+        _ASSET_CACHE.move_to_end(key)
+        while len(_ASSET_CACHE) > _ASSET_CACHE_LIMIT:
+            _ASSET_CACHE.popitem(last=False)
 
 def _project_components(stage, render_mode="lo", include_fixed=False, *, beam_only=False,
                         names=None):
@@ -122,42 +130,51 @@ def _project_components(stage, render_mode="lo", include_fixed=False, *, beam_on
                     render_mode,
                     beam_only,
                 )
+                # Two levels: `asset_data_cache` shares one list copy between
+                # repeated instances within this request; `_ASSET_CACHE` keeps
+                # the arrays between requests.
                 cached = asset_data_cache.get(geometry_key)
-                if cached is None and beam_only:
-                    cached = _move_asset_cache_get(geometry_key)
-                    if cached is not None:
-                        asset_data_cache[geometry_key] = cached
                 if cached is None:
-                    asset_stage = Usd.Stage.Open(geometry_path)
-                    if (
-                        asset_stage is None
-                        or not asset_stage.GetDefaultPrim().IsValid()
-                    ):
+                    stored = _asset_cache_get(geometry_key)
+                    if stored is None:
+                        asset_stage = Usd.Stage.Open(geometry_path)
+                        if (
+                            asset_stage is not None
+                            and asset_stage.GetDefaultPrim().IsValid()
+                        ):
+                            asset_root = asset_stage.GetDefaultPrim()
+                            asset_pose = _component_model_pose(asset_stage, asset_root)
+                            asset_type = asset_root.GetAttribute("optics:type")
+                            asset_attrs = _optics_attrs(asset_root)
+                            asset_type_value = (
+                                asset_type.Get()
+                                if asset_type and asset_type.HasAuthoredValue()
+                                else None
+                            )
+                            asset_mesh_arrays = components._component_mesh_arrays(
+                                asset_stage, asset_root, beam_only=beam_only
+                            )
+                            asset_primitives = _component_primitives(asset_stage, asset_root)
+                            stored = (
+                                asset_pose, asset_type_value, asset_attrs,
+                                asset_mesh_arrays, asset_primitives,
+                            )
+                            _asset_cache_put(geometry_key, stored)
+                    if stored is None:
                         if render_mode == "hi":
                             continue
                         geometry_key = None
                     else:
-                        asset_root = asset_stage.GetDefaultPrim()
-                        asset_pose = _component_model_pose(asset_stage, asset_root)
-                        asset_type = asset_root.GetAttribute("optics:type")
-                        asset_attrs = _optics_attrs(asset_root)
-                        asset_type_value = (
-                            asset_type.Get()
-                            if asset_type and asset_type.HasAuthoredValue()
-                            else None
-                        )
-                        asset_meshes = (
-                            components._component_meshes(asset_stage, asset_root, beam_only=True)
-                            if beam_only else components._component_meshes(asset_stage, asset_root)
-                        )
-                        asset_primitives = _component_primitives(asset_stage, asset_root)
+                        (
+                            asset_pose, asset_type_value, asset_attrs,
+                            asset_mesh_arrays, asset_primitives,
+                        ) = stored
                         cached = (
                             asset_pose, asset_type_value, asset_attrs,
-                            asset_meshes, asset_primitives,
+                            components._mesh_arrays_to_json(asset_mesh_arrays),
+                            asset_primitives,
                         )
                         asset_data_cache[geometry_key] = cached
-                        if beam_only:
-                            _move_asset_cache_put(geometry_key, cached)
                 if geometry_key is not None:
                     (
                         model_pose, asset_type_value, attrs, meshes, primitives,

@@ -3,6 +3,7 @@ beam metadata a laser or detector carries."""
 
 import os
 
+import numpy as np
 from pxr import Usd, UsdGeom, Gf
 
 from opticaltwin import usd_utility as uu
@@ -24,8 +25,45 @@ def _inherited_material_value(prim, component_prim, name):
         current = current.GetParent()
     return None
 
-def _component_meshes(stage, component_prim, *, beam_only=False):
-    """Read local mesh data; beam-only reads need transparent points, not faces."""
+def _transform_points(points, matrix):
+    """Apply a Gf.Matrix4d to an (n, 3) array as Gf does: row vectors, p * M.
+
+    Every matrix reaching here is affine (USD xform ops), so the homogeneous
+    w stays 1 and needs no divide.
+    """
+    m = np.array(matrix, dtype=np.float64)
+    return points @ m[:3, :3] + m[3, :3]
+
+def _fan_triangles(counts, face_indices):
+    """Fan-triangulate polygon faces, keeping the authored winding order.
+
+    Face (v0, v1, ..., vn-1) becomes (v0, v1, v2), (v0, v2, v3), ...; faces
+    with fewer than three vertices contribute nothing.
+    """
+    counts = np.asarray(counts, dtype=np.int64)
+    faces = np.asarray(face_indices, dtype=np.int64)
+    if counts.size and (counts == 3).all() and faces.size == counts.size * 3:
+        return faces.astype(np.int32)  # already triangles: nothing to split
+    starts = np.concatenate(([0], np.cumsum(counts)[:-1]))
+    per_face = np.maximum(counts - 2, 0)
+    total = int(per_face.sum())
+    if total == 0:
+        return np.zeros(0, dtype=np.int32)
+    first = np.repeat(starts, per_face)
+    step = np.arange(total) - np.repeat(np.cumsum(per_face) - per_face, per_face) + 1
+    triangles = np.stack(
+        [faces[first], faces[first + step], faces[first + step + 1]], axis=1
+    )
+    return triangles.ravel().astype(np.int32)
+
+def _component_mesh_arrays(stage, component_prim, *, beam_only=False):
+    """Mesh data in component-local space, with points/indices as NumPy arrays.
+
+    Vectorised: high-detail CAD parts carry ~10^6 vertices, and transforming
+    and rounding them one by one in Python was the bulk of a high-detail
+    payload. The arrays are compact enough to keep in a cross-request cache;
+    `_mesh_arrays_to_json` turns them into the lists the client receives.
+    """
     meshes = []
     xcache = UsdGeom.XformCache()
     component_to_world = xcache.GetLocalToWorldTransform(component_prim)
@@ -45,31 +83,18 @@ def _component_meshes(stage, component_prim, *, beam_only=False):
         if not points or not counts or not face_indices:
             continue
 
+        # Two steps, mesh -> world -> component, in the same order as the
+        # per-point Gf code this replaces, so rounded output is unchanged.
         mesh_to_world = xcache.GetLocalToWorldTransform(prim)
-        local_points = []
-        for point in points:
-            world_point = mesh_to_world.Transform(Gf.Vec3d(*point))
-            local_point = world_to_component.Transform(world_point)
-            local_points.append([
-                round(float(local_point[0]), 6),
-                round(float(local_point[1]), 6),
-                round(float(local_point[2]), 6),
-            ])
+        world_points = _transform_points(np.asarray(points, dtype=np.float64), mesh_to_world)
+        local_points = np.round(_transform_points(world_points, world_to_component), 6)
 
         if beam_only:
             meshes.append({"points": local_points, "opacity": float(display_opacity[0])})
             continue
 
-        # Three.js consumes triangle indices. Triangulate any polygonal USD
-        # faces with a fan while preserving the authored winding order.
-        triangles = []
-        offset = 0
-        for count in counts:
-            count = int(count)
-            face = face_indices[offset:offset + count]
-            for i in range(1, count - 1):
-                triangles.extend([int(face[0]), int(face[i]), int(face[i + 1])])
-            offset += count
+        # Three.js consumes triangle indices.
+        triangles = _fan_triangles(counts, face_indices)
 
         display_color = usd_mesh.GetDisplayColorAttr().Get() or [(0.6, 0.7, 0.8)]
         color = display_color[0]
@@ -89,6 +114,24 @@ def _component_meshes(stage, component_prim, *, beam_only=False):
         meshes.append(mesh_data)
 
     return meshes
+
+def _mesh_arrays_to_json(meshes):
+    """Fresh JSON-ready copies of `_component_mesh_arrays` output (lists, not
+    arrays), so a cached array set is never shared with a response."""
+    out = []
+    for mesh in meshes:
+        data = dict(mesh)
+        data["points"] = mesh["points"].tolist()
+        if "indices" in mesh:
+            data["indices"] = mesh["indices"].tolist()
+        out.append(data)
+    return out
+
+def _component_meshes(stage, component_prim, *, beam_only=False):
+    """Read local mesh data; beam-only reads need transparent points, not faces."""
+    return _mesh_arrays_to_json(
+        _component_mesh_arrays(stage, component_prim, beam_only=beam_only)
+    )
 
 def _component_primitives(stage, component_prim):
     """Serialize analytic USD shapes without converting the source to Mesh."""
