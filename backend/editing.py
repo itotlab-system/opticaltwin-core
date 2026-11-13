@@ -311,7 +311,7 @@ def add_component(name):
     payload = _move_payload(name, stage, render_mode)
     payload.update(
         ok=True, name=comp_name, snapped=snapped,
-        added=_project_components(stage, render_mode, names=added),
+        added=_project_components(stage, render_mode, only_names=added),
         beamPath=_beam_path(stage),
     )
     return jsonify(payload)
