@@ -4,7 +4,7 @@
 // This is a planning sketch, not a simulation. You pick one width for a leg
 // and a shape, and the two ends follow from that — no separate in/out numbers
 // to reconcile, and editing one leg never disturbs another.
-import type { BeamSegment, Component, ComponentUpdate } from "./types";
+import type { BeamSegment } from "./types";
 
 /** The drawn profile of one leg. Widths are full widths in mm. */
 export interface SegmentShape {

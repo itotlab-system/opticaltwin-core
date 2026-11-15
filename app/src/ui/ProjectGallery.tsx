@@ -19,6 +19,11 @@ const COLOR_DOT: Record<string, string> = {
   infrared: "⚫",
 };
 
+/** The server answers 409 when a project of that name already exists. */
+function isConflict(error: unknown) {
+  return error instanceof Error && error.message.includes("409");
+}
+
 export default function ProjectGallery({
   projects, templates, lasers = [], defaultBeamHeight = 100,
   onOpen, onCreate, onDelete, onDuplicate, onRename, onFile,
@@ -174,8 +179,8 @@ export default function ProjectGallery({
     if (!next || next === project) return;
     try {
       await onRename(project, next);
-    } catch (e: any) {
-      setErr(e?.message?.includes("409") ? t("err_exists") : t("err_rename"));
+    } catch (e) {
+      setErr(isConflict(e) ? t("err_exists") : t("err_rename"));
     }
   }
 
@@ -204,8 +209,8 @@ export default function ProjectGallery({
         : {};
       await onCreate(name.trim(), template, tab, start);
       setShowNew(false); setName("");
-    } catch (e: any) {
-      setErr(e?.message?.includes("409") ? t("err_exists") : t("err_create"));
+    } catch (e) {
+      setErr(isConflict(e) ? t("err_exists") : t("err_create"));
     } finally {
       setBusy(false);
     }

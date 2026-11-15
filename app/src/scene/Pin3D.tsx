@@ -10,6 +10,8 @@ export default function Pin3D({
   onEdit,
   setRef,
   ghost = false,
+  labels = { edit: "Edit", delete: "Delete" },
+  locale = "en-GB",
 }: {
   pin: PinAnnotation;
   selected: boolean;
@@ -18,11 +20,14 @@ export default function Pin3D({
   onEdit?: (id: string) => void;
   setRef?: (id: string, ref: Group | null) => void;
   ghost?: boolean;
+  labels?: { edit: string; delete: string };
+  /** For the pin's timestamp, so it reads in the UI's language. */
+  locale?: string;
 }) {
   const size = pin.size ?? 1;
   const needleHeight = 28 * size;
   const headRadius = 7 * size;
-  const timeText = new Date(pin.createdAt).toLocaleString("ja-JP");
+  const timeText = new Date(pin.createdAt).toLocaleString(locale);
 
   return (
     <group
@@ -87,7 +92,7 @@ export default function Pin3D({
                   onEdit?.(pin.id);
                 }}
               >
-                Edit
+                {labels.edit}
               </button>
               <button
                 className="pin-delete-button"
@@ -96,7 +101,7 @@ export default function Pin3D({
                   onDelete(pin.id);
                 }}
               >
-                Delete
+                {labels.delete}
               </button>
             </div>
           )}

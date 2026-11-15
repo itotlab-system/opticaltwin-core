@@ -64,8 +64,22 @@ def ensure_fixed_breadboard_reference(
     path,
     component_name="Breadboard/MB6060_M-Step",
 ):
-    """Replace a legacy generated board with the fixed centred CAD asset."""
+    """Replace a legacy generated board with the fixed centred CAD asset.
+
+    Does nothing when the library has no such asset: a checkout without
+    manufacturer CAD keeps the generated board it can actually draw, rather
+    than trading it for a reference that resolves to nothing.
+    """
     from pxr import Sdf, Usd, UsdGeom
+
+    project_dir = os.path.dirname(os.path.abspath(path))
+    components_dir = os.path.join(
+        os.path.dirname(os.path.dirname(project_dir)), "components"
+    )
+    if not os.path.exists(
+        get_component_usda_path(components_dir, f"{component_name}.usda")
+    ):
+        return False
 
     stage = Usd.Stage.Open(str(path))
     if stage is None or not stage.GetDefaultPrim().IsValid():
@@ -89,10 +103,6 @@ def ensure_fixed_breadboard_reference(
         stage.RemovePrim(holes_path)
 
     board = UsdGeom.Xform.Define(stage, board_path).GetPrim()
-    project_dir = os.path.dirname(os.path.abspath(path))
-    components_dir = os.path.join(
-        os.path.dirname(os.path.dirname(project_dir)), "components"
-    )
     asset_path = get_relative_component_usda_path(
         components_dir, f"{component_name}.usda", project_dir
     )

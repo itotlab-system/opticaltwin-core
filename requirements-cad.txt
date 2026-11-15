@@ -1,0 +1,4 @@
+# The CAD converter (opticaltwin/cad_importer.py). Optional and large: only
+# needed to turn manufacturer STEP files into parts. Pinned because the
+# OpenCASCADE bindings rename classes between major versions.
+cadquery-ocp==7.9.3.1.1

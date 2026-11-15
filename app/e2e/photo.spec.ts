@@ -58,6 +58,7 @@ test("a bench marked on a photo is built with its beam traced", async ({ page, b
   await page.goto("/");
   await loginIfNeeded(page);
   await openProject(page, project);
+  await page.getByRole("button", { name: "More tools" }).click();
   await page.getByTestId("open-photo").click();
   await page.getByTestId("photo-file").setInputFiles({
     name: "bench.jpg", mimeType: "image/jpeg", buffer: await syntheticPhoto(page, cols, rows),
@@ -135,6 +136,7 @@ test("a bench marked on a photo is built with its beam traced", async ({ page, b
 
   // What was marked survives a reopen.
   await page.getByTestId("photo-close").click();
+  await page.getByRole("button", { name: "More tools" }).click();
   await page.getByTestId("open-photo").click();
   await page.getByTestId("photo-tab-parts").click();
   await expect(page.locator(".photo-part-list li")).toHaveCount(4);

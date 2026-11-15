@@ -6,6 +6,7 @@ import {
 } from "../beamShape";
 import type { BoardBounds } from "../beamShape";
 import SweepSlider from "./SweepSlider";
+import { useSettings } from "../settings";
 import { OVERLAY_CLASS } from "../scene/overlay";
 
 const round = (v: number) => Math.round(v * 10) / 10;
@@ -30,6 +31,7 @@ export default function SegmentPopover({
   onShape: (shape: SegmentShape) => void;
   onClose: () => void;
 }) {
+  const { t } = useSettings();
   const shape = shapeOf(segment);
   // How far the beam is *drawn*. Editing it re-draws this leg and nothing
   // else — it never slides the optic at the far end down the bench.
@@ -90,30 +92,30 @@ export default function SegmentPopover({
       <div className="sp-head" onPointerDown={startDrag}>
         <span className="sp-grip" aria-hidden="true">⠿</span>
         <span className="sp-route">
-          {segment.from ?? "source"} <span className="sp-arrow">→</span>{" "}
-          {segment.to ?? "open end"}
+          {segment.from ?? t("seg_source")} <span className="sp-arrow">→</span>{" "}
+          {segment.to ?? t("seg_open_end")}
         </span>
-        <button className="sp-close" onClick={onClose} aria-label="Close">✕</button>
+        <button className="sp-close" onClick={onClose} aria-label={t("close")}>✕</button>
       </div>
 
       <div className="sp-fields">
         <SweepSlider
-          label="Length"
-          title="How far the beam is drawn along this stretch. Nothing moves."
+          label={t("seg_length")}
+          title={t("seg_length_hint")}
           value={round(length)}
           min={0} max={maxLength} step={0.1}
           onChange={(v) => onShape({ ...shape, lengthMm: v })}
         />
         <SweepSlider
-          label="Width in"
-          title="Beam width where it enters this stretch"
+          label={t("seg_width_in")}
+          title={t("seg_width_in_hint")}
           value={round(shape.wIn)}
           min={0.1} max={MAX_WIDTH_MM} step={0.1}
           onChange={(v) => setEndWidth("wIn", v)}
         />
         <SweepSlider
-          label="Width out"
-          title="Beam width where it leaves this stretch"
+          label={t("seg_width_out")}
+          title={t("seg_width_out_hint")}
           value={round(shape.wOut)}
           min={0.1} max={MAX_WIDTH_MM} step={0.1}
           onChange={(v) => setEndWidth("wOut", v)}
@@ -125,11 +127,11 @@ export default function SegmentPopover({
           <button
             key={p.id}
             className={active === p.id ? "active" : ""}
-            title={p.hint}
+            title={t(`seg_shape_${p.id}_hint`)}
             onClick={() => onShape({ ...p.apply(widthOf(shape)), lengthMm: shape.lengthMm })}
           >
             <span className="sp-glyph">{p.glyph}</span>
-            <span className="sp-preset-label">{p.label}</span>
+            <span className="sp-preset-label">{t(`seg_shape_${p.id}`)}</span>
           </button>
         ))}
       </div>

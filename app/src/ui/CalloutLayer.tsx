@@ -10,6 +10,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useSettings } from "../settings";
 import {
   BOX_COLORS, CALLOUT_STYLE, LEADER_COLORS, calloutColors, calloutLayout,
   calloutRect, clampFont, leaderStart, lineBaseline,
@@ -96,6 +97,7 @@ function CalloutItem({
     target: string,
   ) => [number, number, number] | null;
 }) {
+  const { t } = useSettings();
   const group = useRef<SVGGElement | null>(null);
   const line = useRef<SVGLineElement | null>(null);
   const dot = useRef<SVGCircleElement | null>(null);
@@ -335,23 +337,29 @@ function CalloutItem({
       )}
       {selected && !editing && (
         <g ref={tools} className="callout-tools">
-          <CalloutButton x={-98} label="A−" onClick={() => resize(-FONT_STEP)} />
-          <CalloutButton x={-78} label="A+" onClick={() => resize(FONT_STEP)} />
+          <CalloutButton x={-98} label="A−" title={t("callout_smaller")}
+            onClick={() => resize(-FONT_STEP)} />
+          <CalloutButton x={-78} label="A+" title={t("callout_larger")}
+            onClick={() => resize(FONT_STEP)} />
           <CalloutButton
             x={-58}
-            label="色"
+            icon="colour"
+            title={t("callout_colour")}
             active={paletteOpen}
             onClick={() => setPaletteOpen((v) => !v)}
           />
           {/* Hide, not delete: a label taken out of one figure is usually
               wanted back in the next one, and retyping the text is the part
-              that costs. The glyph shows what the click will do. */}
+              that costs. The icon shows what the click will do (an eye to
+              bring it back, a struck eye to hide it), in either language. */}
           <CalloutButton
             x={-38}
-            label={callout.hidden ? "表" : "隠"}
+            icon={callout.hidden ? "show" : "hide"}
+            title={callout.hidden ? t("callout_show_one") : t("callout_hide_one")}
             onClick={() => onChange({ ...callout, hidden: !callout.hidden })}
           />
-          <CalloutButton x={-18} label="✕" onClick={() => onDelete(callout.id)} />
+          <CalloutButton x={-18} label="✕" title={t("callout_delete")}
+            onClick={() => onDelete(callout.id)} />
         </g>
       )}
       {selected && !editing && paletteOpen && editorHost && createPortal(
@@ -361,13 +369,13 @@ function CalloutItem({
           onPointerDown={(e) => e.stopPropagation()}
         >
           <SwatchRow
-            title="線"
+            title={t("callout_line")}
             colors={LEADER_COLORS}
             value={callout.lineColor ?? CALLOUT_STYLE.leader}
             onPick={(value) => onChange({ ...callout, lineColor: value })}
           />
           <SwatchRow
-            title="ボックス"
+            title={t("callout_box")}
             colors={BOX_COLORS}
             value={callout.boxColor ?? CALLOUT_STYLE.boxFill}
             onPick={(value) => onChange({ ...callout, boxColor: value })}
@@ -394,17 +402,42 @@ function CalloutItem({
   );
 }
 
-/** A small square button drawn in SVG so it rides along with the label. */
-function CalloutButton({ x, label, active, onClick }: {
-  x: number; label: string; active?: boolean; onClick: () => void;
+/**
+ * A small square button drawn in SVG so it rides along with the label. It
+ * shows either short text ("A+") or a drawn icon — never a word, since the
+ * square is 18 px and the UI is in two languages; `title` names it in words
+ * (tooltip and accessible name).
+ */
+function CalloutButton({ x, label, icon, title, active, onClick }: {
+  x: number; label?: string; icon?: "colour" | "hide" | "show"; title: string;
+  active?: boolean; onClick: () => void;
 }) {
   return (
     <g
       className={`callout-button${active ? " active" : ""}`}
+      role="button" aria-label={title}
       onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onClick(); }}
     >
+      <title>{title}</title>
       <rect x={x} y={-8} width={18} height={18} rx={3} />
-      <text x={x + 9} y={4} textAnchor="middle" fontSize={11}>{label}</text>
+      {label && <text x={x + 9} y={4} textAnchor="middle" fontSize={11}>{label}</text>}
+      {icon && (
+        // 24-unit icon paths, scaled to 12 px and centred in the square.
+        <g className="callout-icon" transform={`translate(${x + 3} -5) scale(0.5)`}>
+          {icon === "colour" ? (
+            <>
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 3a9 9 0 0 1 0 18Z" className="callout-icon-fill" />
+            </>
+          ) : (
+            <>
+              <path d="M2 12s3.8-6 10-6 10 6 10 6-3.8 6-10 6S2 12 2 12Z" />
+              <circle cx="12" cy="12" r="3" />
+              {icon === "hide" && <path d="M4 20 20 4" />}
+            </>
+          )}
+        </g>
+      )}
     </g>
   );
 }
@@ -420,6 +453,7 @@ function SwatchRow({ title, colors, value, onPick }: {
   value: string;
   onPick: (value: string) => void;
 }) {
+  const { t } = useSettings();
   return (
     <div className="callout-swatches">
       <span className="callout-swatch-title">{title}</span>
@@ -432,8 +466,8 @@ function SwatchRow({ title, colors, value, onPick }: {
             + (color.value === value ? " on" : "")
           }
           style={color.value === "none" ? undefined : { background: color.value }}
-          title={color.label}
-          aria-label={`${title}: ${color.label}`}
+          title={t(color.label)}
+          aria-label={`${title}: ${t(color.label)}`}
           onClick={() => onPick(color.value)}
         />
       ))}

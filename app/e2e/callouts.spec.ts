@@ -41,7 +41,7 @@ test("label a part, retype the label, and export it into the figure",
       const rows = page.locator(".outliner .node");
       await expect(rows.first()).toBeVisible();
       const first = rows.nth(Math.floor((await rows.count()) / 2));
-      const partName = (await first.locator(".nm").innerText()).trim();
+      const partName = (await first.getAttribute("data-name"))!;
 
       // --- label it ---
       await page.getByTestId("callout-mode").click();
@@ -97,12 +97,12 @@ test("label a part, retype the label, and export it into the figure",
       await expect(page.locator(".callout-item")).toHaveCount(1);
 
       // --- export: the SVG carries the label as real text ---
-      await page.getByRole("button", { name: "Snapshot" }).click();
+      await page.getByRole("button", { name: "Export figure" }).click();
       await page.locator(".figure-export-row select").first()
         .selectOption("svg");
       const [download] = await Promise.all([
         page.waitForEvent("download"),
-        page.getByRole("button", { name: "書き出す" }).click(),
+        page.getByRole("button", { name: "Export", exact: true }).click(),
       ]);
       expect(download.suggestedFilename()).toMatch(/\.svg$/);
 

@@ -52,22 +52,23 @@ export const CALLOUT_STYLE = {
  * a white one on a dark bench, a colour separates one arm from the other), and
  * a free picker mostly produces labels that are hard to read in print.
  */
+// `label` is an i18n key (the swatch's tooltip and accessible name).
 export const LEADER_COLORS: { value: string; label: string }[] = [
-  { value: "#222222", label: "黒" },
-  { value: "#ffffff", label: "白" },
-  { value: "#8a8a8a", label: "グレー" },
-  { value: "#d92b2b", label: "赤" },
-  { value: "#1f6feb", label: "青" },
-  { value: "#0d9a63", label: "緑" },
+  { value: "#222222", label: "colour_black" },
+  { value: "#ffffff", label: "colour_white" },
+  { value: "#8a8a8a", label: "colour_grey" },
+  { value: "#d92b2b", label: "colour_red" },
+  { value: "#1f6feb", label: "colour_blue" },
+  { value: "#0d9a63", label: "colour_green" },
 ];
 
 /** "none" is a box with no fill — labels straight on top of the bench. */
 export const BOX_COLORS: { value: string; label: string }[] = [
-  { value: "#ffffff", label: "白" },
-  { value: "#111111", label: "黒" },
-  { value: "#e8e8e8", label: "薄いグレー" },
-  { value: "#ffe98a", label: "黄" },
-  { value: "none", label: "透明" },
+  { value: "#ffffff", label: "colour_white" },
+  { value: "#111111", label: "colour_black" },
+  { value: "#e8e8e8", label: "colour_light_grey" },
+  { value: "#ffe98a", label: "colour_yellow" },
+  { value: "none", label: "colour_none" },
 ];
 
 export interface CalloutColors {

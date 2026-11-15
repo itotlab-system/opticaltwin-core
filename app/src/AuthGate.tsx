@@ -38,7 +38,10 @@ export default function AuthGate() {
       const nextStatus = await response.json() as AuthStatus;
       setStatus({
         ...nextStatus,
-        authenticated: authenticatedInThisTab && nextStatus.authenticated,
+        // An open server has nothing to log in to. Only a server that sets a
+        // password is re-asked once per tab.
+        authenticated: !nextStatus.required
+          || (authenticatedInThisTab && nextStatus.authenticated),
       });
     }
 

@@ -1,2 +1,5 @@
 -r requirements-app.txt
 pytest
+# Pinned: a new ruff release can add checks to a rule family already selected
+# in ruff.toml, which would fail CI on code nobody touched.
+ruff==0.17.5

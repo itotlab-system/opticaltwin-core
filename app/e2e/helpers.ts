@@ -1,25 +1,18 @@
 import type { Page } from "@playwright/test";
 
 /**
- * AuthGate always shows the login form on a fresh tab, even when the server
- * runs without OT_PASSWORD — in that case /api/auth/login accepts anything.
- * The password field is `required`, so submitting an empty value is blocked by
- * the browser; send a placeholder when no password is configured.
+ * AuthGate shows the login form only when the server sets OT_PASSWORD. Ask the
+ * server rather than waiting to see whether the form turns up: on an open
+ * server it never does, and every test would sit out the wait.
  */
 export async function loginIfNeeded(page: Page) {
-  // By id, not by label text: the label is translated, and a suite that runs
-  // with the UI in Japanese would never find the field.
-  const passwordField = page.locator("#login-password");
-  // waitFor, not isVisible: isVisible() samples the DOM once and ignores the
-  // timeout it is given. It ran before React had painted the gate, so the login
-  // was silently skipped and every test then timed out at the gallery instead —
-  // which looks like a broken app rather than a test that never logged in.
-  const shown = await passwordField
-    .waitFor({ state: "visible", timeout: 10_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (shown) {
-    await passwordField.fill(process.env.OT_PASSWORD || "dev");
+  const status = await (await page.request.get("/api/auth/status")).json();
+  if (status.required) {
+    // By id, not by label text: the label is translated, and a suite that runs
+    // with the UI in Japanese would never find the field.
+    const passwordField = page.locator("#login-password");
+    await passwordField.waitFor({ state: "visible", timeout: 10_000 });
+    await passwordField.fill(process.env.OT_PASSWORD ?? "");
     // The gate's button is labelled from i18n ("Log in" / "ログイン"), so submit
     // the form from the field instead of matching either wording.
     await passwordField.press("Enter");

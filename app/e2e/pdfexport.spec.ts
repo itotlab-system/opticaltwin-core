@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import zlib from "node:zlib";
-import { loginIfNeeded } from "./helpers";
+import { loginIfNeeded, openProject } from "./helpers";
 
 // The figure export can also write a PDF — one page, the composited
 // figure (bench + callout labels) as a lossless image, sized so the resolution
@@ -46,19 +46,22 @@ test("the export sheet can write the figure as a one-page PDF", async ({ page, b
   const projectName = `e2e-pdf-${Date.now()}`;
 
   try {
+    // Created through the API: the gallery's "+ New project" button this
+    // used to click was replaced by a "new project" tile.
+    await page.request.post(`${baseURL}/api/projects`, {
+      data: { name: projectName, template: "4f_default" },
+    });
     await page.goto("/");
     await loginIfNeeded(page);
-    await page.getByRole("button", { name: "+ New project" }).click();
-    await page.getByPlaceholder("Project name (e.g. team_a_setup)").fill(projectName);
-    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await openProject(page, projectName);
 
     await expect(page.locator("canvas")).toBeVisible();
-    await page.getByRole("button", { name: "Snapshot" }).click();
+    await page.getByRole("button", { name: "Export figure" }).click();
 
     await page.locator(".figure-export-dialog select").first().selectOption("pdf");
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.getByRole("button", { name: "書き出す" }).click(),
+      page.getByRole("button", { name: "Export", exact: true }).click(),
     ]);
 
     expect(download.suggestedFilename()).toMatch(

@@ -36,6 +36,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
+      # Rules in ruff.toml: mistakes (unused or undefined names, likely bugs),
+      # not style. Before the tests because it takes a second and names the line.
+      - name: Lint
+        run: ruff check .
+
       - name: Build the component library and an example project
         # The smoke test that matters most: it proves a fresh clone can reach a
         # runnable state.
@@ -65,6 +70,12 @@ jobs:
       - name: Install dependencies
         working-directory: app
         run: npm ci
+
+      # Rules in app/eslint.config.js. Warnings (hook dependency hints) are
+      # reported but do not fail the job; errors do.
+      - name: Lint
+        working-directory: app
+        run: npm run lint
 
       # `npm run build` is `tsc -b && vite build`, so this type-checks too.
       - name: Type-check and build

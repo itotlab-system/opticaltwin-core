@@ -11,13 +11,17 @@ Run:  python server.py        # then open http://localhost:8000/
 
 import os
 
-from backend import create_app
+from backend import config, create_app
 
 app = create_app()
 
 
 if __name__ == "__main__":
-    print("OpticalTwin -> http://0.0.0.0:8000/")
+    # localhost, not the 0.0.0.0 it binds to: that is the address to open.
+    print("OpticalTwin -> http://localhost:8000/")
+    if not os.path.exists(os.path.join(config.APP_DIST, "index.html")):
+        print("  The web app is not built yet, so this serves the old built-in page.")
+        print("  Build it once:  cd app && npm install && npm run build")
     app.run(
         host="0.0.0.0",
         port=8000,

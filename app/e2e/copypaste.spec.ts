@@ -33,7 +33,7 @@ test("Ctrl+C / Ctrl+V drops a copy one hole away, and pastes again fan out",
       const rows = page.locator(".outliner .node");
       await expect(rows.first()).toBeVisible();
       const before = await components(page, api, project);
-      const source = (await rows.nth(0).locator(".nm").innerText()).trim();
+      const source = (await rows.nth(0).getAttribute("data-name"))!;
       const origin = before.find((c) => c.name === source)!;
 
       await rows.nth(0).click();
@@ -101,7 +101,7 @@ test("a copy taken in one project pastes into another", async ({ page, baseURL }
 
     const rows = page.locator(".outliner .node");
     await expect(rows.first()).toBeVisible();
-    const copied = (await rows.nth(0).locator(".nm").innerText()).trim();
+    const copied = (await rows.nth(0).getAttribute("data-name"))!;
     const sourceBefore = await components(page, api, source);
     const origin = sourceBefore.find((c) => c.name === copied)!;
 

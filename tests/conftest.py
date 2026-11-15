@@ -19,7 +19,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import server  # noqa: E402
+# Imported for what it does, not for a name: it builds the Flask app.
+import server  # noqa: E402, F401
 from backend import history  # noqa: E402
 import setup_projects  # noqa: E402
 from backend import config  # noqa: E402

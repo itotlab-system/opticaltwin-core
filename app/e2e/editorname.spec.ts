@@ -78,8 +78,10 @@ test("a fresh browser is asked its name once, and edits are recorded under it",
       const card = page.locator(".card", { hasText: project }).first();
       await expect(card.locator(".card-editor")).toHaveText(name);
 
-      // The chip reopens the dialog to change the name, and Esc closes it then.
-      await page.locator(".editor-chip").click();
+      // The chip opens the settings panel, whose "Change" reopens the name
+      // dialog, and Esc closes it then.
+      await page.locator(".settings-chip").click();
+      await page.getByRole("button", { name: "Change", exact: true }).click();
       await expect(prompt).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(prompt).toHaveCount(0);

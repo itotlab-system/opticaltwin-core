@@ -32,12 +32,17 @@
 
 ## What you can do
 
+- Start a design from a laser: the beam runs along the board at the height you
+  choose, and parts dropped near it snap onto it.
 - Arrange real-sized optical components on a breadboard and check fit, spacing,
   and alignment.
 - Follow and fold beam paths geometrically through mirrors and beamsplitters.
 - Group, duplicate, label, and export layouts for discussion or figures.
 - Save setups as text-based OpenUSD scenes that can be reviewed and shared with
   Git.
+- Add the manufacturer's 3D model of any part you own by saving its STEP file.
+- Run it on your own machine or lab server. Nothing is fetched from the
+  internet while it runs, and there is no account to create.
 
 It is made for research groups who build setups on breadboards and want to plan
 and discuss them away from the bench. OpticalTwin is for **layout and planning**:
@@ -45,25 +50,34 @@ beams are geometric guides between components, not an optical simulation.
 
 ## Quick start
 
-Requires **Python 3.12** and **Node 20**.
+Requires **Python 3.12** and **Node 20**. Run these from the repository root:
 
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-app.txt
-python setup_projects.py               # builds the parts library and an example bench
-python server.py                       # backend on :8000
-
-cd app && npm install && npm run dev   # in a second terminal, then open http://localhost:5173
+python setup_projects.py                    # builds the parts library and an example bench
+(cd app && npm install && npm run build)    # builds the web app, once
+python server.py                            # then open http://localhost:8000
 ```
 
-See [Getting started](docs/getting-started.md) for the details.
+You get an example bench built from simple generated parts, ready to edit. There
+is no account and no password; the app asks once for a name to record edits
+under.
+
+Next steps:
+
+- **Use models of the parts you own:** [Manufacturer CAD models](docs/cad-models.md).
+  Save a STEP file into `cad/` and it appears in the part browser.
+- **Share it with your group:** [Running it for your lab](docs/deployment.md).
+- **Something not working, or want to change the code:**
+  [Getting started](docs/getting-started.md).
 
 ## Documentation
 
 | | |
 |---|---|
-| [Getting started](docs/getting-started.md) | Install, run, the generated parts library, a production build |
-| [Manufacturer CAD models](docs/cad-models.md) | Use real STEP models of the parts you own |
+| [Getting started](docs/getting-started.md) | Install and run step by step, troubleshooting, the development setup |
+| [Manufacturer CAD models](docs/cad-models.md) | Add real STEP models of the parts you own to the part browser |
 | [How it works](docs/architecture.md) | USD as the source of truth, the code layout, how beams are drawn |
 | [Running it for your lab](docs/deployment.md) | The shared-password login and running on a lab network |
 | [Roadmap](docs/roadmap.md) | What is planned next |

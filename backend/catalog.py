@@ -7,6 +7,20 @@ from backend import config
 
 _CAD_CATALOG_SYNC_LOCK = threading.Lock()
 
+# The sync runs on every project load; say this once per folder, not each time.
+_MISSING_CONVERTER_REPORTED = set()
+
+
+def _report_missing_converter(step_count, cad_directory):
+    if cad_directory in _MISSING_CONVERTER_REPORTED:
+        return
+    _MISSING_CONVERTER_REPORTED.add(cad_directory)
+    print(
+        f"  {step_count} STEP file(s) in {cad_directory} are not converted: "
+        "the CAD converter is not installed. Run `pip install -r requirements-cad.txt` "
+        "and restart the server."
+    )
+
 def _sync_cad_catalog_group(
     cad_directory,
     group_name,
@@ -41,7 +55,16 @@ def _sync_cad_catalog_group(
 
         if not stale_steps:
             return
-        from opticaltwin import cad_importer
+        try:
+            from opticaltwin import cad_importer
+        except ModuleNotFoundError as exc:
+            # The converter is an optional install. Without it the STEP files
+            # simply stay unconverted; refusing to load the project over them
+            # would take the whole app down for a part nobody has placed yet.
+            if (exc.name or "").split(".")[0] != "OCP":
+                raise
+            _report_missing_converter(len(stale_steps), cad_directory)
+            return
 
         for step_path, stem in stale_steps:
             source_axis = source_forward_axis

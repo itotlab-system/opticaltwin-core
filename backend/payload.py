@@ -8,7 +8,6 @@ from pxr import Usd
 from opticaltwin import optics_lib as ol
 from opticaltwin import usd_utility as uu
 from opticaltwin import beam_tracer
-from opticaltwin import generic_parts
 
 from backend import config
 from backend import catalog
@@ -108,10 +107,6 @@ def _read_asset_data(geometry_path, render_mode, transparent_points_only, reques
     return request_cache[key]
 
 
-def _renders_inline_in_hi(prim, asset):
-    return not asset and generic_parts.is_generic(prim)
-
-
 def _project_components(stage, render_mode="lo", include_fixed=False, *,
                         transparent_points_only=False, only_names=None):
     if render_mode not in ("hi", "lo"):
@@ -136,8 +131,17 @@ def _project_components(stage, render_mode="lo", include_fixed=False, *,
             asset_data = _read_asset_data(
                 geometry_path, render_mode, transparent_points_only, asset_data_cache
             )
-        if render_mode == "hi" and asset_data is None and not _renders_inline_in_hi(prim, asset):
-            continue
+        if render_mode == "hi" and asset_data is None and asset in cad_assets:
+            # A CAD part whose detailed model is missing: its simple one.
+            asset_data = _read_asset_data(
+                uu.get_component_usda_path(
+                    config.LIB_DIR, uu.get_component_name(asset), "lo"
+                ),
+                "lo", transparent_points_only, asset_data_cache,
+            )
+        # Anything else without a detailed model -- a generated library part, a
+        # placeholder -- has only the one, and is drawn from the stage below.
+        # "Detailed" means the best model a part has, never that the part goes.
 
         if asset_data is not None:
             model_pose = asset_data.model_pose
@@ -220,7 +224,7 @@ def _project_payload(name, stage, render_mode="lo"):
                     asset for asset in BOARD_MODEL_ORDER
                     if asset in ol.cad_library_assets(config.LIB_DIR)
                 ],
-                library=ol.component_library_assets(),
+                library=ol.component_library_assets(config.LIB_DIR),
                 libraryPreviews=library._library_previews(),
                 renderMode=render_mode,
                 pins=_pins(stage),

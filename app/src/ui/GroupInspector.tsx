@@ -4,6 +4,7 @@ import { useSettings } from "../settings";
 import { groupPivot, rigidTransform } from "../groups";
 import type { TransformDelta } from "../groups";
 import { colorFor } from "./typeColor";
+import { displayName } from "./partLabels";
 
 // Nudge steps mirror the single-component Inspector: 25 mm on the board,
 // 5 mm in height, 15° of rotation.
@@ -101,10 +102,10 @@ export default function GroupInspector({
       <div className="section-title">{t("group_members")}</div>
       <div className="props">
         {members.map((c) => (
-          <div className="prop" key={c.name}>
+          <div className="prop" key={c.name} title={c.name}>
             <span className="k">
               <span className="type-chip" style={{ background: colorFor(c.type) }} />
-              {c.name}
+              {displayName(c.name)}
             </span>
             <span className="v">{c.x >= 0 ? "+" : ""}{Math.round(c.x)} mm</span>
           </div>

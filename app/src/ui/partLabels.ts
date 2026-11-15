@@ -14,21 +14,42 @@ export function partCategory(asset: string): string {
   return parts.length > 1 ? parts[0] : "Components";
 }
 
-/** `Lens/LA1417-AB-Step.usda` → `LA1417-AB`, `Low_model/lens_f100.usda` → `Lens f100`. */
+/** `Lens/LA1417-AB-Step.usda` → `LA1417-AB`, `Low_model/lens_f100.usda` → `Lens F100`. */
 export function partModel(asset: string): string {
   const bare = (asset.split("/").pop() ?? asset)
     .replace(/\.usda$/i, "")
     .replace(/-Step$/i, "");
-  // The hand-built Low_model parts are named in snake_case rather than by a
-  // catalogue number, so they read better title-cased.
-  if (!/[A-Z]/.test(bare) && bare.includes("_")) {
+  // The generated Low_model parts are named in lower snake_case rather than by
+  // a catalogue number, so they read better title-cased: `camera` as well as
+  // `lens_f100`, or the two sit side by side in the browser looking unrelated.
+  if (!/[A-Z]/.test(bare)) {
     return bare
       .split("_")
       .filter(Boolean)
-      .map((word) => word[0].toUpperCase() + word.slice(1))
+      .map((word) => (
+        ACRONYMS.has(word) ? word.toUpperCase() : word[0].toUpperCase() + word.slice(1)
+      ))
       .join(" ");
   }
   return bare;
+}
+
+const ACRONYMS = new Set(["slm", "led"]);
+
+/** The folder of generated stand-in parts; its name is not one to show people. */
+export const GENERATED_CATEGORY = "Low_model";
+
+/**
+ * A placed part's name as a person reads it: `LA1417_AB_Step_2` → `LA1417_AB (2)`.
+ *
+ * Prim names carry the CAD import's `_Step` suffix and a `_2`, `_3` for each
+ * copy, so the outliner read like a file listing. The prim name itself is
+ * unchanged (it is the part's identity in USD); show it in a tooltip.
+ */
+export function displayName(name: string): string {
+  const m = /^(.*?)(?:_Step)?(?:_(\d+))?$/i.exec(name);
+  if (!m || !m[1]) return name;
+  return m[2] ? `${m[1]} (${m[2]})` : m[1];
 }
 
 function mm(value: number): string {
