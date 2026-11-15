@@ -4,7 +4,7 @@ wavelength, and placing the first source."""
 import os
 import re
 
-from pxr import Usd
+from pxr import Usd, UsdGeom
 
 from opticaltwin import optics_lib as ol
 from opticaltwin import usd_utility as uu
@@ -33,9 +33,19 @@ BEAM_HEIGHT_RANGE_MM = (10.0, 300.0)
 LASER_MARGIN_MM = 25.0
 
 def _laser_assets():
-    """Catalogue lasers, offered as the starting point of a new design."""
-    return sorted(a for a in ol.component_library_assets()
-                  if a.split("/", 1)[0] == "Laser")
+    """Catalogue lasers, offered as the starting point of a new design.
+
+    The CAD lasers when the library has any. A library without manufacturer CAD
+    still has the generated laser, and offers that: starting from a laser is the
+    main way into a new design and must not depend on CAD being installed.
+    """
+    assets = ol.component_library_assets(config.LIB_DIR)
+    cad_lasers = sorted(a for a in assets if a.split("/", 1)[0] == "Laser")
+    return cad_lasers or sorted(a for a in assets if a in _GENERATED_LASERS)
+
+_GENERATED_LASERS = frozenset(
+    asset for asset, (make, _) in ol.LIBRARY.items() if make is ol.make_laser
+)
 
 # Colour names by wavelength, for people who think "the green laser", not
 # "NPL52B". Boundaries are the usual textbook bands; past 750 nm it is
@@ -92,7 +102,15 @@ def _place_starting_laser(project, laser_asset, beam_height):
     attrs = laser.get("attrs", {})
     board = _board(stage)
     # The laser's rear end sits one hole in from the board's -X edge.
-    rear = float(attrs.get("centerX_mm", 0.0)) - float(attrs.get("sizeX_mm", 0.0)) / 2
+    if attrs.get("sizeX_mm") is not None:
+        rear = float(attrs.get("centerX_mm", 0.0)) - float(attrs["sizeX_mm"]) / 2
+    else:
+        # A generated laser declares no size; measure the body. It was just
+        # placed at x = 0 unrotated, so its bound's -X face is the rear.
+        bound = UsdGeom.BBoxCache(
+            Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]
+        ).ComputeWorldBound(stage.GetPrimAtPath(f"{root}/{name}")).ComputeAlignedRange()
+        rear = 0.0 if bound.IsEmpty() else float(bound.GetMin()[0])
     x = board["centerX"] - board["extentXNegative"] + LASER_MARGIN_MM - rear
     y = board["centerY"]
     beam_z = _board_top(stage) + beam_height

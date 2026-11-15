@@ -15,6 +15,45 @@ resolves to the latest release, so a citation of it stays valid.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A fresh checkout showed an empty 3D view.** Opening any project swapped its
+  generated breadboard for a manufacturer CAD board that this repository does
+  not ship, leaving a board with no geometry. The generated board is now kept
+  unless the CAD board is actually in your library, and new blank projects get
+  the same treatment.
+- **A password prompt with no password.** A server started without
+  `OT_PASSWORD` asked for one anyway; any text was accepted. An open server now
+  goes straight to the app.
+- **"Detailed" view hid every generated part.** Only parts with a separate
+  detailed model were drawn, which in a checkout without CAD is none of them.
+  A part with one model is now drawn from it in both views.
+- **The editor went blank without internet access.** The viewport's lighting
+  image was fetched from a CDN at runtime, and a failed fetch took the page down
+  with it. The image now ships with the app; nothing is fetched from another
+  host.
+- **A STEP file in `cad/` stopped every project from opening** when the CAD
+  converter was not installed. The files are now left unconverted and the server
+  says what to install.
+
+### Changed
+
+- **Design from a laser works without CAD.** A library with no manufacturer
+  lasers offers the generated 532 nm laser, so a new project can start from a
+  beam straight after installing.
+- The part browser shows generated parts under *Basic shapes* with consistent
+  names, and the page has an icon.
+- **A shorter quick start.** One terminal and one address: build the web app
+  once, then `python server.py` and open http://localhost:8000. The two-server
+  development setup moved to CONTRIBUTING.
+- **Adding manufacturer CAD is documented as a drop-in.** Save a STEP file under
+  `cad/<kind>/` and it is converted and added to the part browser. See
+  [Manufacturer CAD models](docs/cad-models.md).
+- `requirements-cad.txt` pins the CAD converter. An unpinned
+  `pip install cadquery-ocp` now installs a version the importer cannot load.
+- `server.py` prints the address to open, and says so when the web app has not
+  been built.
+
 ## [2.0.0] — 2026-11-06
 
 A major version because two commands and one REST route changed; see

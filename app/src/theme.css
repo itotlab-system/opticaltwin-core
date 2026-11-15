@@ -41,8 +41,9 @@ body {
 /* ---- top bar ---- */
 .toolbar {
   height: 52px; flex: 0 0 auto;
-  display: flex; align-items: center; gap: 16px;
-  padding: 0 18px;
+  position: relative;          /* anchors the floating pin panel */
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 14px;
   background: var(--panel);   /* adapts to dark/light theme */
   color: var(--text);
   border-bottom: 1px solid var(--line);
@@ -76,6 +77,11 @@ body {
 :root[data-theme="dark"] .brand-logo-dark { opacity: 1; }
 .tag { font-size: 11px; color: var(--muted); }
 .spacer { flex: 1; }
+/* Toolbar labels never break: a wrapped "←プロジェクト一覧" or a 写真 stacked
+   one character per line was how the row failed on a laptop. Controls keep
+   their width; only the project name and status shrink (see below). */
+.toolbar > button, .toolbar > .tb-pop-root > button,
+.toolbar [role="group"] > button { white-space: nowrap; flex-shrink: 0; }
 
 select, button, input {
   font: inherit; color: var(--text);
@@ -185,6 +191,18 @@ button.ghost { background: transparent; }
 .outliner-slot.open { width: 260px; }
 .inspector-slot.open { width: 320px; }
 .panel-slot.closed { width: 38px; }
+.panel-resizer {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  background: var(--panel);
+}
+.panel-resizer:hover,
+.panel-resizer:focus-visible {
+  background: var(--text);
+  outline: none;
+}
 .panel-toggle {
   position: relative;
   z-index: 1;
@@ -230,7 +248,7 @@ button.ghost { background: transparent; }
   background: var(--panel); overflow-y: auto; }
 
 .section-title {
-  font-size: 10px; text-transform: uppercase; letter-spacing: .8px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
   color: var(--muted); padding: 14px 16px 8px;
 }
 
@@ -243,9 +261,15 @@ button.ghost { background: transparent; }
 .node:hover { background: var(--row); }
 .node.sel { background: var(--row); border-left-color: var(--accent); }
 .node .swatch { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
-.node .nm { flex: 1; }
-.node .ty { font-size: 10px; color: var(--muted); }
-.x-hint { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* The name gives way before the type word and position do: those are the
+   row's facts, the full name is in the row's tooltip. */
+.node .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node .ty { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.x-hint {
+  font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
+  white-space: nowrap; min-width: 4.5em; text-align: right;
+}
+.x-hint .unit { opacity: .75; }
 
 /* ---- outliner component-type tree ---- */
 .type-group { margin: 2px 0; }
@@ -339,7 +363,7 @@ button.ghost { background: transparent; }
 .insp-type-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
 .type-chip { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
 .fieldgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 8px 16px 4px; }
-.field label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+.field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
 .field input { width: 100%; font-variant-numeric: tabular-nums; }
 .field input:focus { outline: none; border-color: var(--accent); }
 .board-model-field, .model-field { grid-column: 1 / -1; }
@@ -384,7 +408,7 @@ button.big { padding: 10px 16px; font-size: 14px; }
 .card:hover .card-menu-btn,
 .card:focus-within .card-menu-btn,
 .card-menu-btn[aria-expanded="true"] { opacity: 1; }
-.card-menu-btn:hover { color: var(--fg); background: var(--panel); }
+.card-menu-btn:hover { color: var(--text); background: var(--panel); }
 .card-menu-btn:disabled { opacity: .4; cursor: default; }
 /* Touch has no hover, so a hover-revealed control would be unreachable. */
 @media (hover: none) {
@@ -398,7 +422,7 @@ button.big { padding: 10px 16px; font-size: 14px; }
   display: flex; flex-direction: column;
 }
 .card-menu-item {
-  background: none; border: none; color: var(--fg); cursor: pointer;
+  background: none; border: none; color: var(--text); cursor: pointer;
   font: inherit; font-size: 13px; text-align: left;
   padding: 7px 10px; border-radius: 6px; white-space: nowrap;
 }
@@ -409,7 +433,7 @@ button.big { padding: 10px 16px; font-size: 14px; }
 /* Sits where .card-name was, so the card doesn't reflow when editing starts. */
 .card-rename {
   flex: 1; min-width: 0; font-weight: 600; font-size: 15px;
-  font-family: inherit; color: var(--fg); background: var(--panel);
+  font-family: inherit; color: var(--text); background: var(--panel);
   border: 1px solid var(--accent); border-radius: 4px; padding: 1px 5px;
 }
 /* The bench itself, drawn by benchThumbs.tsx. A fixed 16:10 box so the grid
@@ -496,14 +520,67 @@ button.big { padding: 10px 16px; font-size: 14px; }
   margin: -6px 0 0; font-size: 12px; color: var(--muted); line-height: 1.7;
   white-space: pre-line;   /* the note's lines are separate points */
 }
-.editor-chip { max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 .backbtn { background: transparent; border: 1px solid var(--line); }
 .backbtn:hover { border-color: var(--accent); }
-.proj-name { font-weight: 600; }
+/* A long project name gives way before any control does; the full name is
+   on the gallery card it came from. */
+.proj-name {
+  font-weight: 600; min-width: 4em; max-width: 16em; flex-shrink: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ---- toolbar popovers: settings chip and "⋯" ---- */
+.tb-pop-root { position: relative; flex: 0 0 auto; }
+.tb-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
+  min-width: 200px; padding: 4px;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  display: flex; flex-direction: column;
+}
+:root[data-theme="light"] .tb-pop { box-shadow: 0 8px 24px rgba(20, 25, 35, .16); }
+
+.settings-chip { display: inline-flex; align-items: center; gap: 6px; }
+.settings-chip svg { color: var(--muted); flex: 0 0 auto; }
+.editor-chip { max-width: 10em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.settings-pop { min-width: 248px; padding: 6px 12px 10px; gap: 2px; }
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 0;
+}
+.settings-row + .settings-row { border-top: 1px solid var(--line); }
+.settings-k { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.settings-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.settings-name-v {
+  font-weight: 600; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.settings-rename { padding: 4px 9px; font-size: 12px; }
+.settings-pop .seg-toggle button { white-space: nowrap; }
+
+.tb-menu-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  background: none; border: none; border-radius: 6px;
+  padding: 8px 10px; text-align: left; white-space: nowrap;
+}
+.tb-menu-item:hover, .tb-menu-item:focus-visible { background: var(--panel-2); }
+.tb-menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tb-menu-hint { font-size: 11px; color: var(--muted); }
+.more-pop { min-width: 240px; }
+.iconbtn.active { color: var(--text); background: var(--accent-dim); border-color: var(--accent); }
+
+.figure-export-btn { display: inline-flex; align-items: center; gap: 6px; }
 
 .empty { color: var(--muted); font-size: 13px; padding: 16px; }
-.status { font-size: 11px; color: var(--muted); }
+/* One line, ellipsised: the status used to wrap into a two-line cell and
+   push the controls around it whenever a long message arrived. */
+.status {
+  font-size: 11px; color: var(--muted);
+  flex-shrink: 0; max-width: 22em;   /* the project name gives way first */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .addbar { display: flex; gap: 8px; padding: 8px 16px 16px; }
 .addbar select { flex: 1; }
 
@@ -795,7 +872,7 @@ button.big { padding: 10px 16px; font-size: 14px; }
 .pin-editor-dialog {
   width: min(460px, calc(100vw - 32px));
   padding: 18px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--panel);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
@@ -812,7 +889,7 @@ button.big { padding: 10px 16px; font-size: 14px; }
   min-height: 140px;
   resize: vertical;
   padding: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--bg);
   color: var(--text);
@@ -1058,14 +1135,21 @@ button.big { padding: 10px 16px; font-size: 14px; }
 /* Added:
    Inline panel shown only while Add pin mode is active.
 */
+/* Floats just under the toolbar, over the bench, instead of taking toolbar
+   width: it appeared inline before, and turning pin mode on re-wrapped the
+   whole row. A float, so it casts the menu shadow. */
 .pin-add-panel {
+  position: absolute; top: calc(100% + 8px); left: 50%; z-index: 30;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 6px;
+  padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: var(--panel-2);
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  white-space: nowrap;
 }
 
 /* ---- per-segment beam editor, floating beside the leg in the viewport ----
@@ -1168,12 +1252,23 @@ button.big { padding: 10px 16px; font-size: 14px; }
 .callout-item text { user-select: none; }
 
 .callout-tools { pointer-events: auto; cursor: pointer; }
-.callout-tools rect { fill: var(--panel); stroke: var(--border); }
+.callout-tools rect { fill: var(--panel); stroke: var(--line); }
 .callout-tools text { fill: var(--text); }
 .callout-tools g:hover rect,
 .callout-tools g.active rect { fill: var(--accent); }
 .callout-tools g:hover text,
 .callout-tools g.active text { fill: #fff; }
+/* Drawn icons in the label tools (colour, hide/show): stroked like the
+   toolbar glyphs, and turning white with the text on hover. */
+.callout-tools .callout-icon {
+  fill: none; stroke: var(--text); stroke-width: 2.2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.callout-tools .callout-icon .callout-icon-fill { fill: var(--text); stroke: none; }
+.callout-tools g:hover .callout-icon,
+.callout-tools g.active .callout-icon { stroke: #fff; }
+.callout-tools g:hover .callout-icon .callout-icon-fill,
+.callout-tools g.active .callout-icon .callout-icon-fill { fill: #fff; }
 
 /* A label hidden from the figure, shown faint while 図注 mode is on so it can
    be brought back — it is out of the picture, not out of the project. */
@@ -1183,7 +1278,7 @@ button.big { padding: 10px 16px; font-size: 14px; }
    never part of the exported picture. */
 .callout-palette {
   position: absolute; pointer-events: auto;
-  padding: 8px; border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--panel); box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
   display: grid; gap: 6px;
 }
@@ -1193,7 +1288,7 @@ button.big { padding: 10px 16px; font-size: 14px; }
 }
 .callout-swatch {
   width: 18px; height: 18px; padding: 0; cursor: pointer;
-  border: 1px solid var(--border); border-radius: 4px;
+  border: 1px solid var(--line); border-radius: 4px;
 }
 /* The "no fill" swatch: a diagonal slash, the usual sign for transparent. */
 .callout-swatch.none {
@@ -1223,7 +1318,7 @@ button.big { padding: 10px 16px; font-size: 14px; }
 .figure-export-dialog {
   width: min(420px, calc(100vw - 32px));
   padding: 18px;
-  border: 1px solid var(--border); border-radius: 12px;
+  border: 1px solid var(--line); border-radius: 12px;
   background: var(--panel); box-shadow: 0 18px 48px rgba(0, 0, 0, .4);
 }
 .figure-export-title { margin-bottom: 12px; font-weight: 700; }

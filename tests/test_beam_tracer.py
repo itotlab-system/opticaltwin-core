@@ -2,7 +2,6 @@ import unittest
 import os
 
 from opticaltwin import beam_tracer
-import server
 from backend import payload
 from backend import config
 from pxr import Gf, Usd, UsdGeom

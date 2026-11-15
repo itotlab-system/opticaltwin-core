@@ -2,6 +2,7 @@ import type { BeamSegment, Component, ComponentGroup } from "../types";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useSettings } from "../settings";
 import { colorFor } from "./typeColor";
+import { displayName } from "./partLabels";
 import { groupOf } from "../groups";
 import { buildOutlinerTree } from "../outlinerTree";
 
@@ -126,6 +127,8 @@ export default function Outliner({
       <div
         key={c.name}
         ref={(element) => registerRow(c.name, element)}
+        data-name={c.name}
+        title={c.name}
         role="treeitem"
         tabIndex={tabbable ? 0 : -1}
         aria-selected={selection.includes(c.name)}
@@ -165,9 +168,14 @@ export default function Outliner({
             : undefined}
         >{onToggle ? (expanded ? "▾" : "▸") : ""}</span>
         <span className="swatch" style={{ background: colorFor(c.type) }} />
-        <span className="nm">{c.name}</span>
+        <span className="nm">{displayName(c.name)}</span>
+        {/* The swatch's colour said the type, to those who could tell the
+            colours apart and remembered the key. In beam order, where types
+            are mixed, it is said in words too; the type view's heading
+            already says it. */}
+        {view === "beam" && <span className="ty">{displayType(c.type)}</span>}
         <span className="x-hint" title={t("outliner_x_title")}>
-          {c.x >= 0 ? "+" : ""}{Math.round(c.x)}
+          {c.x >= 0 ? "+" : ""}{Math.round(c.x)}<span className="unit"> mm</span>
         </span>
       </div>
     );
@@ -319,7 +327,7 @@ export default function Outliner({
           {libraryGroups.size > 1 && (
             <select
               className="component-group-select"
-              aria-label="Component category"
+              aria-label={t("component_category")}
               value={selectedGroup}
               onChange={(event) => {
                 const firstAsset = libraryGroups.get(event.target.value)?.[0];

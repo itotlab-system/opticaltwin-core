@@ -183,7 +183,7 @@ const Viewport = forwardRef<ViewportHandle, {
   onReady?: () => void;
 }>(function Viewport({
   components, beam, board, selection, groups, enteredGroupId,
-  isPlacing, placingAsset, libraryPreviews, library, transformMode,
+  isPlacing, placingAsset, libraryPreviews, transformMode,
   onSelect, onDrillIn, onMove, onMoveMany, onPlace, onFold,
   selectedSegmentKey = null, onSelectSegment, beamEditor,
   pins = [],
@@ -209,7 +209,7 @@ const Viewport = forwardRef<ViewportHandle, {
   const zFloor = bb.max[2];   // board top surface — parts rest on or above it
   const clampZ = (z: number) => Math.min(Z_MAX_MM, Math.max(zFloor, z));
   // Canvas background — dark / gray / light, picked in the toolbar.
-  const { bgColor } = useSettings();
+  const { bgColor, t, lang } = useSettings();
   // The move/rotate gizmo drives one object, so it only appears for a
   // single-part selection; groups get their own gizmo.
   const selected = selection.length === 1 ? selection[0] : null;
@@ -976,7 +976,11 @@ const Viewport = forwardRef<ViewportHandle, {
         position={[cx + span * 0.3, cy - span * 0.2, cz + span]}
         intensity={2.2}
       />
-      <Environment preset="city" />
+      {/* Served by the app itself. drei's `preset="city"` is this same image
+          fetched from a CDN at runtime, and a bench that cannot reach it --
+          a lab network with no route out -- lost the whole editor to the
+          failed request. */}
+      <Environment files="/hdri/potsdamer_platz_1k.hdr" />
 
       <Breadboard
         board={board}
@@ -1294,6 +1298,9 @@ const Viewport = forwardRef<ViewportHandle, {
           onEdit={(id) => {
             onEditPin?.(id);
           }}
+          // Passed in, not read from context: this renders inside the canvas.
+          labels={{ edit: t("edit"), delete: t("delete") }}
+          locale={lang === "ja" ? "ja-JP" : "en-GB"}
           setRef={(id, ref) => {
             pinRefs.current[id] = ref;
           }}

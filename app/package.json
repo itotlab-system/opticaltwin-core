@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && node scripts/check-i18n.mjs && vite build",
     "preview": "vite preview",
     "dev:all": "npm run build && concurrently \"cd .. && . .venv/bin/activate && OT_DEV_RELOAD=1 python server.py\" \"npm run dev\"",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@react-three/drei": "^9.114.3",
@@ -19,13 +21,18 @@
     "three": "^0.169.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/three": "^0.169.0",
     "@vitejs/plugin-react": "^4.3.3",
     "concurrently": "^10.0.5",
+    "eslint": "^10.15.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
     "typescript": "^5.6.3",
+    "typescript-eslint": "^8.72.2",
     "vite": "^5.4.10"
   }
 }

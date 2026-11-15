@@ -7,6 +7,7 @@ import Viewport, {
 import Outliner from "./ui/Outliner";
 import PartBrowser from "./ui/PartBrowser";
 import Inspector from "./ui/Inspector";
+import PanelResizer from "./ui/PanelResizer";
 import SegmentPopover from "./ui/SegmentPopover";
 import type { SegmentShape } from "./beamShape";
 import ProjectGallery from "./ui/ProjectGallery";
@@ -46,7 +47,8 @@ import {
 } from "./groups";
 
 import { readClipboard, writeClipboard, type Clipboard } from "./clipboard";
-import { CameraIcon, EyeIcon } from "./ui/icons";
+import { CameraIcon, EyeIcon, MoreIcon } from "./ui/icons";
+import ToolbarPopover from "./ui/ToolbarPopover";
 import { PIN_COLOR_OPTIONS, usePins } from "./hooks/usePins";
 import { useCallouts } from "./hooks/useCallouts";
 import { useGallery } from "./hooks/useGallery";
@@ -87,6 +89,8 @@ export default function App() {
   const [selectedSegment, setSelectedSegment] = useState<BeamSegment | null>(null);
   const [showOutliner, setShowOutliner] = useState(true);
   const [showInspector, setShowInspector] = useState(true);
+  const [outlinerWidth, setOutlinerWidth] = useState(260);
+  const [inspectorWidth, setInspectorWidth] = useState(320);
   const [transformMode, setTransformMode] = useState<TransformMode>("translate");
   // True once the R3F canvas has finished its first render, so the
   // Snapshot button can't be clicked before there's anything to capture.
@@ -104,7 +108,7 @@ export default function App() {
     pins, setPins, pinMode, setPinMode, selectedPinId, setSelectedPinId,
     pinUserName, setPinUserName, pinColor, setPinColor, pinEditor, setPinEditor,
     handleAddPinAt, handleDeletePin, handleMovePin, handleEditPin, savePinEditor,
-  } = usePins({ current, editorName, setSelection });
+  } = usePins({ current, editorName, setSelection, t });
 
   const [figureExport, setFigureExport] = useState<FigureExportSettings | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -893,19 +897,6 @@ export default function App() {
         )}
 
         <span className="tb-sep" aria-hidden="true" />
-        {/* Pin mode: the next click on the board places a discussion pin. */}
-        <button
-          className={pinMode ? "primary" : ""}
-          onClick={() => {
-            setIsPlacing(false);
-            setPinMode((v) => !v);
-            setSelection([]);
-            setSelectedPinId(null);
-          }}
-          title={t("pin_hint")}
-        >
-          {pinMode ? t("pin_cancel") : t("pin_add")}
-        </button>
         {/*
           One control, two segments — editing the labels and showing them are
           different questions ("let me label parts" vs "keep them out of my way
@@ -953,26 +944,57 @@ export default function App() {
           </button>
         </div>
 
-        <span className="tb-sep" aria-hidden="true" />
+        {/* Labelled, not icon-only: a paper figure is the first thing most
+            members come to the editor for, so "export a figure" is named
+            rather than left as a camera to be guessed at. It sits right after
+            図注, the mode that prepares the figure. */}
         <button
-          className="ghost" data-testid="open-photo"
-          onClick={() => setPhotoOpen(true)}
-          title={t("photo_title")}
-        >
-          {t("photo_button")}
-        </button>
-        {/* Icon-only: the toolbar is crowded, and a camera reads faster than
-            the word. aria-label keeps the accessible name, so screen readers
-            and the e2e selectors still find it by "Snapshot". */}
-        <button
-          className="iconbtn ghost"
+          className="ghost figure-export-btn"
           onClick={() => setFigureExport(figureExport ?? DEFAULT_FIGURE_SETTINGS)}
           disabled={!viewportReady}
-          title={t("snapshot")}
-          aria-label={t("snapshot")}
+          title={t("figure_export_hint")}
         >
           <CameraIcon />
+          {t("figure_export")}
         </button>
+
+        <span className="tb-sep" aria-hidden="true" />
+        {/* The occasional tools: building a bench from a photo, and placing a
+            discussion pin. Both are a few-times-a-term action, so they wait
+            behind "⋯" instead of taking toolbar width from the everyday ones. */}
+        <ToolbarPopover
+          triggerClassName={`iconbtn ghost${pinMode ? " active" : ""}`}
+          triggerContent={<MoreIcon />}
+          label={t("more_tools")}
+          role="menu"
+          popClassName="more-pop"
+        >
+          {(close) => (
+            <>
+              <button
+                type="button" role="menuitem" className="tb-menu-item"
+                data-testid="open-photo"
+                onClick={() => { close(); setPhotoOpen(true); }}
+              >
+                <span>{t("photo_title")}</span>
+              </button>
+              <button
+                type="button" role="menuitem" className="tb-menu-item"
+                data-testid="pin-mode"
+                onClick={() => {
+                  close();
+                  setIsPlacing(false);
+                  setPinMode((v) => !v);
+                  setSelection([]);
+                  setSelectedPinId(null);
+                }}
+              >
+                <span>{pinMode ? t("pin_cancel") : t("pin_add")}</span>
+                <span className="tb-menu-hint">{t("pin_hint")}</span>
+              </button>
+            </>
+          )}
+        </ToolbarPopover>
         {pinMode && (
           <div className="pin-add-panel">
             <input
@@ -990,7 +1012,9 @@ export default function App() {
                   type="button"
                   className={pinColor === option.value ? "pin-color-btn selected" : "pin-color-btn"}
                   onClick={() => setPinColor(option.value)}
-                  title={option.label}
+                  title={t(option.label)}
+                  aria-label={t(option.label)}
+                  aria-pressed={pinColor === option.value}
                 >
                   <span
                     className="pin-color-dot"
@@ -1000,9 +1024,14 @@ export default function App() {
               ))}
             </div>
 
-            <span className="pin-mode-hint">
-              Click on the breadboard to place a pin
-            </span>
+            <span className="pin-mode-hint">{t("pin_mode_hint")}</span>
+            {/* The way out lives here now that the pin switch is in "⋯". */}
+            <button
+              type="button" className="ghost"
+              onClick={() => setPinMode(false)}
+            >
+              {t("pin_cancel")}
+            </button>
           </div>
         )}
 
@@ -1010,13 +1039,14 @@ export default function App() {
       </div>
 
       <div className="work">
-        <aside className={`panel-slot outliner-slot ${showOutliner ? "open" : "closed"}`}>
+        <aside className={`panel-slot outliner-slot ${showOutliner ? "open" : "closed"}`}
+          style={showOutliner ? { width: outlinerWidth } : undefined}>
           <button
             className="panel-toggle"
             onClick={() => setShowOutliner((show) => !show)}
-            title={showOutliner ? "Hide Outliner" : "Show Outliner"}
+            title={t(showOutliner ? "panel_hide" : "panel_show", { name: t("panel_outliner") })}
           >
-            Outliner
+            {t("panel_outliner")}
           </button>
           {showOutliner && (
             <Outliner
@@ -1036,6 +1066,10 @@ export default function App() {
             />
           )}
         </aside>
+        {showOutliner && (
+          <PanelResizer label={t("panel_resize", { name: t("panel_outliner") })} width={outlinerWidth}
+            min={180} max={500} direction={1} onResize={setOutlinerWidth} />
+        )}
         {browsingParts && data && (
           <PartBrowser
             library={data.library}
@@ -1114,13 +1148,18 @@ export default function App() {
             />
           )}
         </div>
-        <aside className={`panel-slot inspector-slot ${showInspector ? "open" : "closed"}`}>
+        {showInspector && (
+          <PanelResizer label={t("panel_resize", { name: t("panel_inspector") })} width={inspectorWidth}
+            min={240} max={600} direction={-1} onResize={setInspectorWidth} />
+        )}
+        <aside className={`panel-slot inspector-slot ${showInspector ? "open" : "closed"}`}
+          style={showInspector ? { width: inspectorWidth } : undefined}>
           <button
             className="panel-toggle"
             onClick={() => setShowInspector((show) => !show)}
-            title={showInspector ? "Hide Inspector" : "Show Inspector"}
+            title={t(showInspector ? "panel_hide" : "panel_show", { name: t("panel_inspector") })}
           >
-            Inspector
+            {t("panel_inspector")}
           </button>
           {showInspector && (
             <Inspector
@@ -1182,7 +1221,7 @@ export default function App() {
         <div className="pin-editor-overlay" onMouseDown={() => setPinEditor(null)}>
           <div className="pin-editor-dialog" onMouseDown={(e) => e.stopPropagation()}>
             <div className="pin-editor-title">
-              {pinEditor.mode === "create" ? "Add pin label" : "Edit pin label"}
+              {pinEditor.mode === "create" ? t("pin_label_add") : t("pin_label_edit")}
             </div>
             <textarea
               autoFocus
@@ -1197,12 +1236,12 @@ export default function App() {
                   void savePinEditor();
                 }
               }}
-              placeholder="Pin label"
+              placeholder={t("pin_label_placeholder")}
             />
-            <div className="pin-editor-hint">Enterで改行・Ctrl/⌘ + Enterで保存</div>
+            <div className="pin-editor-hint">{t("pin_label_hint")}</div>
             <div className="pin-editor-actions">
-              <button type="button" onClick={() => setPinEditor(null)}>Cancel</button>
-              <button type="button" className="primary" onClick={() => void savePinEditor()}>Save</button>
+              <button type="button" onClick={() => setPinEditor(null)}>{t("cancel")}</button>
+              <button type="button" className="primary" onClick={() => void savePinEditor()}>{t("save")}</button>
             </div>
           </div>
         </div>

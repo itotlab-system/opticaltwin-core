@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import zlib from "node:zlib";
 
-// A "Snapshot" button in the toolbar downloads the current
+// The "Export figure" button in the toolbar downloads the current
 // viewport as a PNG named "<project>-<timestamp>.png".
 // The X/Y/Z axis triad in the top-left corner is editor furniture
 // and must not appear in that PNG.
@@ -92,17 +92,20 @@ function findAxisColorPixels(png: ReturnType<typeof decodePng>): string[] {
   return hits;
 }
 
-import { loginIfNeeded } from "./helpers";
+import { loginIfNeeded, openProject } from "./helpers";
 
 test("snapshot button downloads a non-blank PNG named after the project", async ({ page, baseURL }) => {
   const projectName = `e2e-snapshot-${Date.now()}`;
 
   try {
+    // Created through the API: the gallery's "+ New project" button this
+    // used to click was replaced by a "new project" tile.
+    await page.request.post(`${baseURL}/api/projects`, {
+      data: { name: projectName, template: "4f_default" },
+    });
     await page.goto("/");
     await loginIfNeeded(page);
-    await page.getByRole("button", { name: "+ New project" }).click();
-    await page.getByPlaceholder("Project name (e.g. team_a_setup)").fill(projectName);
-    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await openProject(page, projectName);
 
     await expect(page.locator("canvas")).toBeVisible();
 
@@ -110,10 +113,10 @@ test("snapshot button downloads a non-blank PNG named after the project", async 
     // completes; Playwright's click() auto-waits for it to become enabled.
     // It opens the export sheet (format / resolution / background) rather than
     // downloading straight away — the defaults are a 2x PNG.
-    await page.getByRole("button", { name: "Snapshot" }).click();
+    await page.getByRole("button", { name: "Export figure" }).click();
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.getByRole("button", { name: "書き出す" }).click(),
+      page.getByRole("button", { name: "Export", exact: true }).click(),
     ]);
 
     const filenamePattern = new RegExp(

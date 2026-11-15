@@ -153,7 +153,7 @@ def main(argv):
             for name, template in DEFAULT_PROJECTS:
                 create_project(name, template)
     except (FileNotFoundError, ValueError) as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from exc
 
 
 if __name__ == "__main__":

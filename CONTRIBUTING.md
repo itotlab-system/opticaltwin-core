@@ -70,21 +70,27 @@ that structure — it is the backbone of the data model.
 
 ## Development setup
 
-Requires Python 3.12 and Node 20.
+Requires Python 3.12 and Node 20. Two terminals: the backend, and the Vite dev
+server that reloads the page as you edit.
 
 ```bash
+# terminal 1
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-app.txt
 python setup_projects.py     # generates components/ and an example project
 python server.py             # backend on :8000
 
-cd app && npm install && npm run dev    # frontend on :5173
+# terminal 2
+cd app && npm install && npm run dev    # open http://localhost:5173
 ```
+
+Use port 5173 while developing. Port 8000 serves the last *built* app
+(`npm run build`), which does not follow your edits.
 
 Optional, for the CAD import path only:
 
 ```bash
-pip install cadquery-ocp    # large; only opticaltwin/cad_importer.py needs it
+pip install -r requirements-cad.txt    # large; only opticaltwin/cad_importer.py needs it
 ```
 
 ## Tests
@@ -92,12 +98,21 @@ pip install cadquery-ocp    # large; only opticaltwin/cad_importer.py needs it
 ```bash
 pip install -r requirements-dev.txt   # adds pytest
 python -m pytest tests/
-cd app && npx playwright test     # browser end-to-end, starts the servers itself
+cd app && npx playwright test e2e/login.spec.ts   # one browser spec; starts the servers itself
 ```
 
-The CAD import tests need `cadquery-ocp`. Please add a test alongside a change
-rather than after it — coverage is thinner than we would like, and the way it
-gets better is one pull request at a time.
+Two things to expect in this repository, because it ships no manufacturer CAD:
+
+- **Some Python tests are skipped.** The CAD import tests need the converter
+  (`requirements-cad.txt`), and several beam tests need CAD parts that only you
+  can download. A skip is not a failure.
+- **The browser suite was written against the lab's CAD catalogue.** Without
+  those parts many specs fail for want of a part, not because of your change,
+  and the whole suite takes a long time. Run the spec for the area you touched
+  and compare the result with an unmodified checkout.
+
+Please add a test alongside a change rather than after it — coverage is thinner
+than we would like, and the way it gets better is one pull request at a time.
 
 ## Style
 
@@ -107,6 +122,17 @@ and comments that explain *why* a thing is done, not what the line does. Several
 non-obvious decisions in this codebase are documented in comments precisely so
 they are not undone by accident — if one is in your way, that comment is the
 argument you need to answer.
+
+Two linters run in CI and must pass. Both look for mistakes (unused or undefined
+names, misuse of React hooks, likely bugs) rather than formatting:
+
+```bash
+ruff check .                # Python; rules in ruff.toml
+cd app && npm run lint      # web client; rules in app/eslint.config.js
+```
+
+`ruff check . --fix` applies the safe fixes. A leading underscore marks a name
+that is unused on purpose.
 
 ## Reporting bugs
 

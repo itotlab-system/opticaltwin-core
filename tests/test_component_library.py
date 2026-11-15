@@ -7,7 +7,6 @@ from unittest.mock import patch
 from pxr import Usd, UsdGeom
 
 from opticaltwin import optics_lib
-import server
 from backend import catalog, components, placement
 from backend import config
 from opticaltwin import usd_utility

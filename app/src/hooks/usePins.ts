@@ -6,9 +6,10 @@ import type { PinAnnotation } from "../types";
 
 /** Colours offered for a new pin. */
 export const PIN_COLOR_OPTIONS = [
-  { label: "Blue", value: "#4c8dff" },
-  { label: "Red", value: "#e5534b" },
-  { label: "Green", value: "#2ea043" },
+  // `label` is an i18n key: the swatch's name is read out and shown as a tooltip.
+  { label: "pin_colour_blue", value: "#4c8dff" },
+  { label: "pin_colour_red", value: "#e5534b" },
+  { label: "pin_colour_green", value: "#2ea043" },
 ] as const;
 
 export type PinEditorState = {
@@ -35,10 +36,12 @@ export function usePins({
   current,
   editorName,
   setSelection,
+  t,
 }: {
   current: string | null;
   editorName: string;
   setSelection: (names: string[]) => void;
+  t: (key: string, vars?: Record<string, string | number>) => string;
 }) {
   const [pins, setPins] = useState<PinAnnotation[]>([]);
   // When true, clicking the breadboard creates a new pin.
@@ -60,13 +63,13 @@ export function usePins({
     const authorName = pinUserName.trim();
 
     if (!authorName) {
-      window.alert("Please enter your name before placing a pin.");
+      window.alert(t("pin_need_name"));
       return;
     }
 
     const newPin: PinAnnotation = {
       id: createPinId(),
-      label: "New pin",
+      label: t("pin_new_label"),
       x,
       y,
       z,
@@ -82,7 +85,7 @@ export function usePins({
   }
 
   async function handleDeletePin(id: string) {
-    const ok = window.confirm("Delete this pin?");
+    const ok = window.confirm(t("pin_delete_confirm"));
     if (!ok) return;
 
     const nextPins = pins.filter((pin) => pin.id !== id);

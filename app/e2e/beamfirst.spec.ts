@@ -47,7 +47,7 @@ test("the fold targets turn a mirror to send the beam that way", async ({ page, 
   await loginIfNeeded(page);
   await openProject(page, project);
   await expect(page.locator("canvas")).toBeVisible();
-  await page.locator(".outliner").getByText(added.name, { exact: true }).click();
+  await page.locator(`.outliner .node[data-name="${added.name}"]`).click();
 
   const current = page.locator(".fold-target.current");
   const other = page.locator(".fold-target:not(.current)");

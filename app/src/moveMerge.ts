@@ -80,11 +80,10 @@ export function mergeMove(prev: ProjectData, patch: MovePayload): ProjectData {
  * has drifted (another user deleted or renamed a part) and merging would leave
  * a stale bench on screen. The caller refetches instead.
  *
- * Only checks that direction. The patch lists the components the *tracer* sees,
- * which is the `lo` set, and in `hi` mode the scene is a subset of it: the
- * server drops parts with no hi-res asset. So extra names in the patch are
- * normal and are ignored by the merge above. The cost is that a part another
- * user *added* does not appear until the next reload; a move never adds one.
+ * Only checks that direction. The patch lists the components the *tracer*
+ * sees, and a name in the patch that is not on screen is ignored by the merge
+ * above rather than treated as drift. The cost is that a part another user
+ * *added* does not appear until the next reload; a move never adds one.
  */
 export function needsFullReload(prev: ProjectData, patch: MovePayload): boolean {
   const patched = new Set(patch.components.map((c) => c.name));

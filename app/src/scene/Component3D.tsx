@@ -584,7 +584,7 @@ function Part({ c, selected }: { c: Component; selected: boolean }) {
 }
 
 export default function Component3D({
-  c, selected, onSelect, onDoubleClick, onMove,
+  c, selected, onSelect, onDoubleClick,
   setRef, ghost = false, interactive = true,
 } : {
   c: Component;

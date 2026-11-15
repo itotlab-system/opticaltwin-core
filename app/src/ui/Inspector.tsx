@@ -9,6 +9,8 @@ import type {
 import { useSettings } from "../settings";
 import { modelLabel } from "../modelPicker";
 import { colorFor } from "./typeColor";
+import { displayName } from "./partLabels";
+import { displayType } from "./Outliner";
 import GroupInspector from "./GroupInspector";
 
 const AXES: Array<{ k: keyof Component; tkey: string; step: number }> = [
@@ -116,10 +118,10 @@ export default function Inspector({
   return (
     <div className="inspector">
       <div className="insp-head">
-        <div className="nm">{component.name}</div>
+        <div className="nm" title={component.name}>{displayName(component.name)}</div>
         <div className="insp-type-row">
           <span className="type-chip" style={{ background: colorFor(component.type) }} />
-          <span className="ty">{component.type}</span>
+          <span className="ty">{displayType(component.type)}</span>
         </div>
       </div>
       {/* Swappable model, for the parts that have one (holders, posts). It used
@@ -142,7 +144,7 @@ export default function Inspector({
         </div>
       )}
       <div className="fieldgrid">
-        {AXES.map(({ k, tkey, step }) => (
+        {AXES.map(({ k, tkey }) => (
           <div className="field" key={k}>
             <label>{t(tkey)}</label>
             <input
@@ -171,20 +173,21 @@ export default function Inspector({
       {/* Beam node pin controls — shown only when this component is in the beam path */}
       {beamNodes.length > 0 && (
         <>
-          <div className="section-title">Beam nodes</div>
+          <div className="section-title">{t("beam_nodes")}</div>
           <div className="props">
             {beamNodes.map(({ seg, idx, pinned }) => (
               <div className="prop" key={`${seg}-${idx}`}>
-                <span className="k">seg {seg + 1} · node {idx + 1}</span>
+                <span className="k">{t("beam_node_label", { seg: seg + 1, node: idx + 1 })}</span>
                 <button
                   className={pinned ? "primary" : "ghost"}
                   style={{ fontSize: 11, padding: "3px 9px" }}
-                  title={pinned ? "Unpin — beam follows component when moved" : "Pin — lock beam vertex here"}
+                  title={pinned ? t("beam_node_unpin_hint") : t("beam_node_pin_hint")}
+                  aria-pressed={pinned}
                   onClick={() =>
                     onPinBeamNode(seg, idx, pinned ? null : [component.x, component.y, component.z])
                   }
                 >
-                  {pinned ? "📌 Pinned" : "Pin"}
+                  {pinned ? t("beam_node_pinned") : t("beam_node_pin")}
                 </button>
               </div>
             ))}

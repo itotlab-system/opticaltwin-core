@@ -13,6 +13,7 @@ import { useSettings } from "../settings";
 import { colorFor } from "./typeColor";
 import { displayType } from "./Outliner";
 import {
+  GENERATED_CATEGORY,
   partCategory,
   partModel,
   partSearchText,
@@ -280,7 +281,9 @@ export default function PartBrowser({
                 className={"part-category" + (category === group ? " sel" : "")}
                 onClick={() => setCategory(group)}
               >
-                <span className="nm">{group}</span>
+                <span className="nm">
+                  {group === GENERATED_CATEGORY ? t("category_generated") : group}
+                </span>
                 <span className="x-hint">{count}</span>
               </button>
             ))}

@@ -42,8 +42,8 @@ test("group two parts, move them rigidly, and keep the group across a reload",
       await expect(rows.first()).toBeVisible();
       const first = rows.nth(0);
       const second = rows.nth(1);
-      const firstName = (await first.locator(".nm").innerText()).trim();
-      const secondName = (await second.locator(".nm").innerText()).trim();
+      const firstName = (await first.getAttribute("data-name"))!;
+      const secondName = (await second.getAttribute("data-name"))!;
 
       // --- multi-select: plain click, then Ctrl+click ---
       await first.click();
@@ -63,7 +63,7 @@ test("group two parts, move them rigidly, and keep the group across a reload",
 
       // --- rigid move: arrow keys nudge every member by the same delta ---
       await page.locator("canvas").click({ position: { x: 5, y: 5 } });  // focus, no part
-      await page.locator(".outliner").getByText(firstName, { exact: true }).click();
+      await page.locator(`.outliner .node[data-name="${firstName}"]`).click();
       await expect(page.locator(".outliner .node.sel")).toHaveCount(2);
 
       for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowRight");   // 1 mm each
@@ -99,7 +99,7 @@ test("group two parts, move them rigidly, and keep the group across a reload",
       await expect(page.locator(".outliner .group-head")).toHaveCount(0);
 
       // --- drill in and step back out ---
-      const firstMember = page.locator(".outliner").getByText(firstName, { exact: true });
+      const firstMember = page.locator(`.outliner .node[data-name="${firstName}"]`);
       await firstMember.dblclick();
       await expect(page.locator(".outliner .node.sel")).toHaveCount(1);  // one member
       // Clicking a part outside the group leaves it, so the group selects
@@ -145,7 +145,7 @@ test("rotating a group turns it about its own centroid, rigidly",
       await expect(rows.first()).toBeVisible();
       let first = true;
       for (let i = 0, n = await rows.count(); i < n; i++) {
-        const name = (await rows.nth(i).locator(".nm").innerText()).trim();
+        const name = (await rows.nth(i).getAttribute("data-name"))!;
         if (!wanted.includes(name)) continue;
         await rows.nth(i).click(first ? {} : { modifiers: ["Control"] });
         first = false;
@@ -218,14 +218,14 @@ test("dragging the group gizmo translates every member and nothing else",
       // viewport camera, so it needs the canvas at its final size and the
       // renderer past its first frame. The Snapshot button is enabled by
       // exactly that signal (Viewport's onReady), so wait on it.
-      await expect(page.getByRole("button", { name: /Snapshot|スナップショット/ }))
+      await expect(page.getByRole("button", { name: /Export figure|図を書き出す/ }))
         .toBeEnabled();
 
       const rows = page.locator(".outliner .node");
       await expect(rows.first()).toBeVisible();
       let first = true;
       for (let i = 0, n = await rows.count(); i < n; i++) {
-        const name = (await rows.nth(i).locator(".nm").innerText()).trim();
+        const name = (await rows.nth(i).getAttribute("data-name"))!;
         if (!wanted.includes(name)) continue;
         await rows.nth(i).click(first ? {} : { modifiers: ["Control"] });
         first = false;
@@ -239,7 +239,7 @@ test("dragging the group gizmo translates every member and nothing else",
       const pivot = {
         x: picked.reduce((s, c) => s + c.x, 0) / picked.length,
         y: picked.reduce((s, c) => s + c.y, 0) / picked.length,
-        z: Math.min(...picked.map((c) => (c as any).z)),
+        z: Math.min(...picked.map((c) => (c as { z: number }).z)),
       };
 
       // The gizmo sits at the selection's pivot. Rebuilding the viewport camera

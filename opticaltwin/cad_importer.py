@@ -201,7 +201,7 @@ def parse_part_colors(
                 float(channel) for channel in channels.replace(" ", "").split(",")
             )
         except ValueError:
-            raise ValueError(f"色は0〜1の数値3つで指定してください: {item}")
+            raise ValueError(f"色は0〜1の数値3つで指定してください: {item}") from None
         if len(color) != 3 or not all(0.0 <= channel <= 1.0 for channel in color):
             raise ValueError(f"色は0〜1の数値3つで指定してください: {item}")
         rules.append((name.lower(), color))
@@ -243,7 +243,7 @@ def parse_mesh_opacities(items: list[str]) -> list[tuple[str, float]]:
         try:
             opacity = float(value)
         except ValueError:
-            raise ValueError(f"不透明度は0〜1の数値で指定してください: {item}")
+            raise ValueError(f"不透明度は0〜1の数値で指定してください: {item}") from None
         if not 0.0 <= opacity <= 1.0:
             raise ValueError(f"不透明度は0〜1の数値で指定してください: {item}")
         rules.append((name.lower(), opacity))
@@ -2690,10 +2690,10 @@ def write_usda_mesh(
         raise RuntimeError(
             f"USD Stageを作成できませんでした: {output_path}"
         )
-    
+
     UsdGeom.SetStageMetersPerUnit(stage, 0.001)
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
-    
+
     root_prim_name = usd_identifier(root_prim_name)
     root_prim = UsdGeom.Xform.Define(stage, f"/{root_prim_name}")
     stage.SetDefaultPrim(root_prim.GetPrim())
@@ -2732,7 +2732,7 @@ def write_usda_mesh(
             group_prims[part.group_name] = group_prim
 
     group_mesh_counts: dict[str | None, int] = {}
-    for index, part in enumerate(parts):
+    for part in parts:
         group_mesh_counts[part.group_name] = (
             group_mesh_counts.get(part.group_name, 0) + 1
         )

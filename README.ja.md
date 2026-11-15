@@ -32,10 +32,13 @@
 
 ## できること
 
+- レーザーから設計を始める：選んだ高さでボード上にビームが走り、近くに置いた部品はビームに吸着
 - 実寸の光学部品をブレッドボード上に配置し、収まり・間隔・アライメントを確認
 - ミラーやビームスプリッタでの折り返しを含むビーム経路を、作図として追跡
 - グループ化・複製・図注ラベル・画像出力で、議論や論文用の図に
 - セットアップをテキスト形式の OpenUSD シーンとして保存し、Git で確認・共有
+- 手元の部品は、メーカーの STEP ファイルを保存するだけで実物の 3D モデルに
+- 自分の PC や研究室のサーバーで動作。実行中にインターネットへは接続せず、アカウント登録も不要
 
 ブレッドボード上に光学系を組む研究グループが、実験室から離れた場所でレイアウトを
 検討・議論するためのツールです。部品は実寸で定義されているため、画面上で収まるものは
@@ -47,25 +50,32 @@ Zemax・Code V などがあり、本ツールはブラウザで開いて編集�
 
 ## はじめかた
 
-Python 3.12 と Node 20 が必要です。
+Python 3.12 と Node 20 が必要です。リポジトリのルートで実行します。
 
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-app.txt
-python setup_projects.py               # 部品ライブラリとサンプルのベンチを生成
-python server.py                       # バックエンド（:8000）
-
-cd app && npm install && npm run dev   # 別ターミナルで。http://localhost:5173 を開く
+python setup_projects.py                    # 部品ライブラリとサンプルのベンチを生成
+(cd app && npm install && npm run build)    # Web アプリをビルド（最初の1回だけ）
+python server.py                            # http://localhost:8000 を開く
 ```
 
-詳しくは [Getting started](docs/getting-started.md)（英語）をご覧ください。
+簡易形状の部品で組んだサンプルのベンチが開き、そのまま編集できます。アカウントも
+パスワードも不要で、編集者として記録する名前を最初に一度だけ尋ねます。
+
+次にできること：
+
+- **手元の部品の実物モデルを使う:** [Manufacturer CAD models](docs/cad-models.md)。
+  STEP ファイルを `cad/` に保存すると、部品ブラウザに追加されます。
+- **研究室で共有する:** [Running it for your lab](docs/deployment.md)。
+- **うまく動かない・コードを変更したい:** [Getting started](docs/getting-started.md)。
 
 ## ドキュメント（英語）
 
 | | |
 |---|---|
-| [Getting started](docs/getting-started.md) | インストール・起動・自動生成される部品ライブラリ・本番用ビルド |
-| [Manufacturer CAD models](docs/cad-models.md) | 手元にある部品の、メーカー提供の STEP モデルを使う（CAD データは同梱していません） |
+| [Getting started](docs/getting-started.md) | 手順ごとのインストールと起動・困ったとき・開発用の構成 |
+| [Manufacturer CAD models](docs/cad-models.md) | 手元にある部品の、メーカー提供の STEP モデルを部品ブラウザに追加する（CAD データは同梱していません） |
 | [How it works](docs/architecture.md) | USD を唯一の情報源とする仕組み・コード構成・ビームの描き方 |
 | [Running it for your lab](docs/deployment.md) | 共有パスワードによるログインと、研究室ネットワークでの運用 |
 | [Roadmap](docs/roadmap.md) | 今後の予定 |

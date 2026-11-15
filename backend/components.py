@@ -2,7 +2,7 @@ import os
 from typing import TypedDict
 
 import numpy as np
-from pxr import Usd, UsdGeom, Gf
+from pxr import Usd, UsdGeom
 
 from opticaltwin import usd_utility as uu
 from opticaltwin import beam_tracer

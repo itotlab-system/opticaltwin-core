@@ -94,7 +94,9 @@ test("the viewport background switches between dark, gray and light",
       expect(luma(await settledPixel(page))).toBeCloseTo(luma(gray), -1);
 
       // Switching the UI theme leaves an explicitly chosen background alone.
-      await page.getByTitle("Theme / テーマ").click();
+      await page.locator(".settings-chip").click();
+      await page.locator(".settings-pop").getByRole("button", { name: "Light", exact: true }).click();
+      await page.keyboard.press("Escape");
       await expect(swatch("gray")).toHaveClass(/active/);
       expect(luma(await settledPixel(page))).toBeCloseTo(luma(gray), -1);
     } finally {

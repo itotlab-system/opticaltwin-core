@@ -344,13 +344,22 @@ def add_breadboard(stage, root_path, nx, ny, x0=0.0, y0=0.0, spacing=GRID_MM,
     board_top = BEAM_Z - 19.0
     board_cz = board_top - thickness_mm / 2.0
 
+    # A CAD board is used only when its asset is really there. Manufacturer CAD
+    # is not redistributable, so a public checkout has none: referencing it
+    # anyway leaves a board with no geometry, and the generated slab below is
+    # the right board for that library.
+    asset_ref = None
     if asset_rel_path:
         from opticaltwin import usd_utility as uu
+        asset_ref = uu.normalize_component_asset_ref(asset_rel_path)
+        layer_dir = os.path.dirname(stage.GetRootLayer().realPath)
+        if not os.path.exists(os.path.join(layer_dir, asset_ref)):
+            asset_ref = None
+
+    if asset_ref:
         board_xform = UsdGeom.Xform.Define(stage, f"{root_path}/Breadboard")
         board_prim = board_xform.GetPrim()
-        board_prim.GetReferences().AddReference(
-            uu.normalize_component_asset_ref(asset_rel_path)
-        )
+        board_prim.GetReferences().AddReference(asset_ref)
         board_prim.CreateAttribute(
             "optics:type", Sdf.ValueTypeNames.Token
         ).Set("breadboard")

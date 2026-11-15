@@ -1,0 +1,26 @@
+# Lint rules for the Python code. Run: `ruff check .`
+#
+# The set is deliberately about mistakes, not style: names that are unused or
+# undefined, and patterns that usually mean a bug. Line length and import order
+# are left alone -- enforcing them now would rewrite most files for no change
+# in behaviour.
+target-version = "py312"
+extend-exclude = ["components", "projects", "setups", "cad", "web", "app"]
+
+[lint]
+select = [
+    "F",    # pyflakes: unused imports and variables, undefined names
+    "E4", "E7", "E9",   # import placement, statement errors, syntax errors
+    "W",    # whitespace left behind
+    "B",    # bugbear: likely bugs
+]
+ignore = [
+    # zip() without strict=: every use here pairs sequences built together.
+    "B905",
+]
+
+[lint.per-file-ignores]
+# B023 (a function defined in a loop reading the loop's variables): the two
+# helpers here, `continues_here` and `emit`, are called only inside the pass
+# that defines them, so they never see a later iteration's value.
+"opticaltwin/beam_tracer.py" = ["B023"]

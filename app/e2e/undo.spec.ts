@@ -43,7 +43,7 @@ test("Ctrl+Z rewinds an edit and Ctrl+Shift+Z replays it",
       await expect(redoBtn).toBeDisabled();
 
       // --- an edit: delete the selected part ---
-      const victim = (await rows.nth(0).locator(".nm").innerText()).trim();
+      const victim = (await rows.nth(0).getAttribute("data-name"))!;
       await rows.nth(0).click();
       page.once("dialog", (d) => d.accept());          // the remove confirmation
       await page.keyboard.press("Delete");
@@ -99,7 +99,7 @@ test("repeated undo walks all the way back to the starting layout",
 
       const rows = page.locator(".outliner .node");
       await expect(rows.first()).toBeVisible();
-      const target = (await rows.nth(0).locator(".nm").innerText()).trim();
+      const target = (await rows.nth(0).getAttribute("data-name"))!;
       const startX = (await components(page, api, project))
         .find((c) => c.name === target)!.x;
 

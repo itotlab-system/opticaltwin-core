@@ -186,7 +186,7 @@ def update_component_model(name, comp):
     render_mode = body.get("renderMode", "lo")
     if render_mode not in ("hi", "lo"):
         abort(400, "renderMode must be hi or lo")
-    if not isinstance(asset, str) or asset not in ol.component_library_assets():
+    if not isinstance(asset, str) or asset not in ol.component_library_assets(config.LIB_DIR):
         abort(400, "unknown asset")
 
     setup = scene.project_setup(name)
@@ -324,7 +324,7 @@ def _add_asset(stage, asset, x, y, wanted_name=None):
     build).
     """
     component_path = uu.get_component_name(asset or "")
-    library_assets = ol.component_library_assets()
+    library_assets = ol.component_library_assets(config.LIB_DIR)
     library_asset = (
         asset if asset in library_assets else f"{component_path}.usda"
     )
@@ -540,5 +540,5 @@ def delete_component(name, comp):
     if groups_before and groups_before.HasAuthoredValue():
         _write_groups(stage, _groups(stage))
     stage.GetRootLayer().Save()
-    
+
     return jsonify(ok=True)

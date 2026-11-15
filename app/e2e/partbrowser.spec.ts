@@ -48,8 +48,13 @@ test("browses the catalogue by picture and places the chosen part", async ({ pag
   await expect
     .poll(async () => tiles.count())
     .toBeGreaterThan(0);
-  for (const label of await browser.locator(".part-tile").allTextContents()) {
-    expect(label.toLowerCase()).toContain("lens");
+  // A match may be on the part's folder rather than its visible text: a
+  // waveplate filed under Lens/ is typed as a polarizer, yet is still found
+  // by "lens". The tile's title is its asset path, folder included.
+  for (const tile of await browser.locator(".part-tile").all()) {
+    const label = (await tile.textContent()) ?? "";
+    const asset = (await tile.getAttribute("title")) ?? "";
+    expect(`${label} ${asset}`.toLowerCase()).toContain("lens");
   }
 
   // Picking a tile closes the browser and drops straight into placing.
