@@ -5,13 +5,14 @@ No vendor CAD ships with OpticalTwin. This script reads the manifest of part
 numbers and vendor links and fetches the models for the parts you own into
 cad/, so `opticaltwin/cad_importer.py` has something to convert.
 
-    python tools/fetch_cad.py --list      # what the manifest holds, and what is missing
-    python tools/fetch_cad.py             # download every entry that has a step_url
+    python tools/fetch_cad.py --list      # each missing part: the page to open, where to save it
     python tools/fetch_cad.py --part ER1  # just one
 
-Entries whose `step_url` is empty cannot be downloaded automatically; the
-product page is printed instead so you can save the STEP by hand. That is the
-normal case, not a failure -- most vendors do not offer a stable direct link.
+You download the models yourself, in a browser: open the product page, download
+the STEP file, and save it at the path shown. The server converts it the next
+time a project is opened. An entry may carry a `step_url` for a vendor that
+offers a stable direct link; running without --list fetches those, but the
+manifest ships none -- most vendors do not offer one.
 
 Nothing here circumvents a login, a licence click-through, or a robots rule. If
 a vendor wants you to accept terms before downloading, do that in a browser.
@@ -51,8 +52,30 @@ def load_manifest(path=MANIFEST):
     return parts
 
 
+# Folders the server converts by itself. Mirrors the groups in
+# backend/catalog.py `_sync_cad_catalog`; tests/test_fetch_cad.py keeps them equal.
+AUTO_FOLDERS = frozenset({
+    "Beam Splitter", "Breadboard", "Cage", "Detector", "Holder", "Iris", "LED",
+    "Laser", "Lens", "Mirror", "Mount", "Polarizer", "Post", "Rod", "SLM",
+})
+
+
 def target_path(part):
     return os.path.join(CAD_DIR, part["target"])
+
+
+def converts_by_itself(part):
+    return part["target"].split("/", 1)[0] in AUTO_FOLDERS
+
+
+def print_manual_steps(part, indent="            "):
+    """What to do by hand for one missing part."""
+    page = part.get("product_page") or "(no page recorded; search the vendor's site)"
+    print(f"{indent}1. open      {page}")
+    print(f"{indent}2. save as   cad/{part['target']}")
+    if not converts_by_itself(part):
+        print(f"{indent}3. convert   by hand, not automatic for this folder;"
+              " see the comment above it in cad/SOURCES.toml")
 
 
 def download(url, dest):
@@ -70,6 +93,13 @@ def download(url, dest):
     return len(payload)
 
 
+NEXT_STEPS = """
+  Then, with the converter installed (pip install -r requirements-cad.txt),
+  open your project again in the browser: new files are converted as it opens.
+  The parts appear under "Add a part", in the category named after their folder.
+  Step by step: docs/cad-models.md"""
+
+
 def cmd_list(parts):
     have = missing = 0
     print(f"{len(parts)} parts in the manifest\n")
@@ -78,12 +108,12 @@ def cmd_list(parts):
         have += present
         missing += not present
         mark = "have" if present else "MISSING"
-        manual = not present and not part.get("step_url")
-        print(f"  [{mark:>7}] {part['part']:<24} {part['target']}"
-              f"{'  (no step_url — download by hand)' if manual else ''}")
-        if manual and part.get("product_page"):
-            print(f"            {part['product_page']}")
+        print(f"  [{mark:>7}] {part['part']:<24} {part.get('type', '')}")
+        if not present:
+            print_manual_steps(part)
     print(f"\n  {have} present, {missing} missing")
+    if missing:
+        print(NEXT_STEPS)
     return 0
 
 
@@ -105,7 +135,8 @@ def cmd_fetch(parts, only=None, force=False):
         url = part.get("step_url")
         if not url:
             manual += 1
-            print(f"  manual   {part['part']:<24} {part.get('product_page') or '(no link recorded)'}")
+            print(f"  manual   {part['part']}")
+            print_manual_steps(part, indent="           ")
             continue
         try:
             size = download(url, dest)
@@ -119,9 +150,8 @@ def cmd_fetch(parts, only=None, force=False):
 
     print(f"\n  {fetched} fetched, {skipped} already present, "
           f"{manual} need a manual download, {failed} failed")
-    if manual:
-        print("\n  Save the manual ones under cad/ at the `target` path shown in the\n"
-              "  manifest, then run opticaltwin/cad_importer.py. See docs/dev/ASSETS.md.")
+    if manual or fetched:
+        print(NEXT_STEPS)
     return 1 if failed else 0
 
 

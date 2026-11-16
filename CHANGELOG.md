@@ -46,6 +46,15 @@ resolves to the latest release, so a citation of it stays valid.
 - **Windows commands in the quick start.** The README says which systems it runs
   on and gives a Windows block next to the Linux and macOS one; the commands
   shown before failed on their first line in Command Prompt.
+- **Adding a manufacturer model is one documented flow**, from the vendor's
+  page to the part on the bench in *Detailed* view
+  ([Manufacturer CAD models](docs/cad-models.md)). Models are downloaded by
+  hand; `tools/fetch_cad.py --list` now prints, for each missing part, the page
+  to open and the path to save to, and flags the few that need converting by
+  hand.
+- **The quick start checks Python and Node first**, links to their installers,
+  uses `python -m venv` on Windows (the `py` launcher is often missing), and
+  explains the `(.venv)` prompt. Getting started has a conda variant.
 - **Any Python from 3.12 up.** The quick start no longer asks for exactly 3.12
   (`python3.12`, `py -3.12`), which failed for anyone with a newer one; CI now
   tests 3.12, 3.13 and 3.14.

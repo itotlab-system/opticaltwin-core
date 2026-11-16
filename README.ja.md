@@ -50,8 +50,23 @@ Zemax・Code V などがあり、本ツールはブラウザで開いて編集�
 
 ## はじめかた
 
-**Linux・macOS・Windows** で動きます。Python 3.12 以降（`python --version` で確認）と Node 20 が必要です。
-リポジトリのルートで実行します。
+**Linux・macOS・Windows** で動きます。
+
+**最初に、** Python 3.12 以降と Node 20 以降が入っているか確認します。
+
+```bash
+python --version     # Python 3.12 以上（Linux・macOS では python3 --version）
+node --version       # v20 以上
+```
+
+ない・古い場合は [python.org](https://www.python.org/downloads/) と
+[nodejs.org](https://nodejs.org/)（LTS 版）からインストールします。Windows では
+Python のインストーラーで *Add python.exe to PATH* にチェックを入れ、終わったら
+ターミナルを開き直してください。
+
+続いて、リポジトリのルートで1行ずつ実行します。1行目のあとプロンプトの先頭に
+`(.venv)` が付きます。以降のインストールはこのフォルダの中に入り、システムの
+Python は汚れません。
 
 **Linux・macOS**（Windows の WSL も）:
 
@@ -66,7 +81,7 @@ python server.py                            # http://localhost:8000 を開く
 **Windows**（コマンドプロンプトまたは PowerShell）:
 
 ```bat
-py -m venv .venv
+python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements-app.txt
 python setup_projects.py
@@ -82,10 +97,14 @@ python server.py
 簡易形状の部品で組んだサンプルのベンチが開き、そのまま編集できます。アカウントも
 パスワードも不要で、編集者として記録する名前を最初に一度だけ尋ねます。
 
+conda を使っている場合は、venv の代わりに環境を作ります。
+[Getting started](docs/getting-started.md#using-conda) を参照してください。
+
 次にできること：
 
 - **手元の部品の実物モデルを使う:** [Manufacturer CAD models](docs/cad-models.md)。
-  STEP ファイルを `cad/` に保存すると、部品ブラウザに追加されます。
+  メーカーのサイトから部品の STEP ファイルをダウンロードして `cad/` に保存すると、
+  詳細な 3D モデル付きで部品ブラウザに追加されます。
 - **研究室で共有する:** [Running it for your lab](docs/deployment.md)。
 - **うまく動かない・コードを変更したい:** [Getting started](docs/getting-started.md)。
 
