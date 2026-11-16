@@ -20,7 +20,7 @@
   <a href="https://github.com/itotlab-system/opticaltwin-core/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/itotlab-system/opticaltwin-core/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://doi.org/10.5281/zenodo.21594827"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.21594827.svg"></a>
   <a href="https://opensource.org/licenses/Apache-2.0"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/License-Apache_2.0-blue.svg"></a>
-  <a href="https://www.python.org/"><img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776ab.svg"></a>
+  <a href="https://www.python.org/"><img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776ab.svg"></a>
   <a href="https://nodejs.org/"><img alt="Node 20" src="https://img.shields.io/badge/Node-20-5fa04e.svg"></a>
 </p>
 
@@ -50,15 +50,34 @@ Zemax・Code V などがあり、本ツールはブラウザで開いて編集�
 
 ## はじめかた
 
-Python 3.12 と Node 20 が必要です。リポジトリのルートで実行します。
+**Linux・macOS・Windows** で動きます。Python 3.12 以降（`python --version` で確認）と Node 20 が必要です。
+リポジトリのルートで実行します。
+
+**Linux・macOS**（Windows の WSL も）:
 
 ```bash
-python3.12 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-app.txt
 python setup_projects.py                    # 部品ライブラリとサンプルのベンチを生成
 (cd app && npm install && npm run build)    # Web アプリをビルド（最初の1回だけ）
 python server.py                            # http://localhost:8000 を開く
 ```
+
+**Windows**（コマンドプロンプトまたは PowerShell）:
+
+```bat
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements-app.txt
+python setup_projects.py
+cd app
+npm install
+npm run build
+cd ..
+python server.py
+```
+
+最後に http://localhost:8000 を開きます。
 
 簡易形状の部品で組んだサンプルのベンチが開き、そのまま編集できます。アカウントも
 パスワードも不要で、編集者として記録する名前を最初に一度だけ尋ねます。

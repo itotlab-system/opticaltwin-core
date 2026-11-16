@@ -4,29 +4,46 @@
 
 ## Requirements
 
-- **Python 3.12**
+- **Linux, macOS or Windows**
+- **Python 3.12 or newer** (3.12, 3.13 and 3.14 are tested)
 - **Node 20** (only to build the web app; it does not need to keep running)
 
 ## Install and run
 
 Run everything from the repository root, in one terminal.
 
+**Linux and macOS** (and Windows under WSL):
+
 ```bash
-python3.12 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-app.txt
 python setup_projects.py                    # builds the parts library and an example bench
 (cd app && npm install && npm run build)    # builds the web app, once
 python server.py                            # then open http://localhost:8000
 ```
 
-On Windows, use `py -3.12 -m venv .venv` and `.venv\Scripts\activate` for the
-first line, and run `cd app`, `npm install`, `npm run build`, `cd ..` as
-separate commands for the fourth.
+**Windows** (Command Prompt or PowerShell):
 
-To start it again later, only the last step is needed:
+```bat
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements-app.txt
+python setup_projects.py
+cd app
+npm install
+npm run build
+cd ..
+python server.py
+```
+
+`py` is the Python launcher that the python.org installer adds. It picks the
+newest Python you have; `py -0` lists them all.
+
+To start it again later, activate the environment and start the server:
 
 ```bash
-source .venv/bin/activate && python server.py
+source .venv/bin/activate && python server.py     # Linux and macOS
+.venv\Scripts\activate && python server.py        # Windows Command Prompt
 ```
 
 ## What you should see
@@ -53,7 +70,11 @@ can commit and share.
 | A plain page titled "OpticalTwin Editor" with no 3D toolbar | The web app has not been built, so the server fell back to its old built-in page. Run `npm install && npm run build` in `app/`, then reload. |
 | A password prompt | `OT_PASSWORD` is set in your environment. Enter that value, or start the server without it. |
 | `npm install` reports vulnerabilities | They are in the build tools (Vite and its dependencies), which run only on your machine while building. Nothing from them is served to the browser. |
-| `Address already in use` | Something else is on port 8000. Stop it, or find it with `ss -ltnp \| grep 8000`. |
+| `source` is not recognized | You are in Windows Command Prompt or PowerShell. Use the Windows commands above. |
+| `No matching distribution found for numpy` (or scipy) | Your Python is older than 3.12. Install a current one from python.org, delete the `.venv` folder and start again. Check with `python --version` (Windows: `py -0`). |
+| `python3` or `py` is not recognized | Python is not installed, or not on your PATH. Install it from python.org; on Windows, tick *Add python.exe to PATH* in the installer. |
+| PowerShell says running scripts is disabled | Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or use Command Prompt. |
+| `Address already in use` | Something else is on port 8000. Stop it, or find it with `ss -ltnp \| grep 8000` (Windows: `netstat -ano \| findstr :8000`). |
 | The project list is empty | `python setup_projects.py` has not been run. |
 
 ## The parts are generated

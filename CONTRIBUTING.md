@@ -70,12 +70,12 @@ that structure — it is the backbone of the data model.
 
 ## Development setup
 
-Requires Python 3.12 and Node 20. Two terminals: the backend, and the Vite dev
+Requires Python 3.12 or newer and Node 20. Two terminals: the backend, and the Vite dev
 server that reloads the page as you edit.
 
 ```bash
 # terminal 1
-python3.12 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-app.txt
 python setup_projects.py     # generates components/ and an example project
 python server.py             # backend on :8000

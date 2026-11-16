@@ -20,7 +20,7 @@
   <a href="https://github.com/itotlab-system/opticaltwin-core/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/itotlab-system/opticaltwin-core/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://doi.org/10.5281/zenodo.21594827"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.21594827.svg"></a>
   <a href="https://opensource.org/licenses/Apache-2.0"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/License-Apache_2.0-blue.svg"></a>
-  <a href="https://www.python.org/"><img alt="Python 3.12" src="https://img.shields.io/badge/Python-3.12-3776ab.svg"></a>
+  <a href="https://www.python.org/"><img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776ab.svg"></a>
   <a href="https://nodejs.org/"><img alt="Node 20" src="https://img.shields.io/badge/Node-20-5fa04e.svg"></a>
 </p>
 
@@ -50,17 +50,34 @@ beams are geometric guides between components, not an optical simulation.
 
 ## Quick start
 
-Requires **Python 3.12** and **Node 20**. Run these from the repository root:
+Runs on **Linux, macOS and Windows**. Requires **Python 3.12 or newer** (check with `python --version`) and
+**Node 20**. Run these from the repository root.
+
+**Linux and macOS** (and Windows under WSL):
 
 ```bash
-python3.12 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-app.txt
 python setup_projects.py                    # builds the parts library and an example bench
 (cd app && npm install && npm run build)    # builds the web app, once
 python server.py                            # then open http://localhost:8000
 ```
 
-You get an example bench built from simple generated parts, ready to edit. There
+**Windows** (Command Prompt or PowerShell):
+
+```bat
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements-app.txt
+python setup_projects.py
+cd app
+npm install
+npm run build
+cd ..
+python server.py
+```
+
+Then open http://localhost:8000. You get an example bench built from simple generated parts, ready to edit. There
 is no account and no password; the app asks once for a name to record edits
 under.
 

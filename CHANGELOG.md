@@ -43,6 +43,12 @@ resolves to the latest release, so a citation of it stays valid.
   beam straight after installing.
 - The part browser shows generated parts under *Basic shapes* with consistent
   names, and the page has an icon.
+- **Windows commands in the quick start.** The README says which systems it runs
+  on and gives a Windows block next to the Linux and macOS one; the commands
+  shown before failed on their first line in Command Prompt.
+- **Any Python from 3.12 up.** The quick start no longer asks for exactly 3.12
+  (`python3.12`, `py -3.12`), which failed for anyone with a newer one; CI now
+  tests 3.12, 3.13 and 3.14.
 - **A shorter quick start.** One terminal and one address: build the web app
   once, then `python server.py` and open http://localhost:8000. The two-server
   development setup moved to CONTRIBUTING.
