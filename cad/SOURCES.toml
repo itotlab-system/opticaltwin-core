@@ -6,12 +6,15 @@
 # design work but not to pass them on. So the repository ships the part numbers
 # and where to get them; you download the models for the parts you own.
 #
-# Fetch them with:
+# See what to download, and where to save each file, with:
 #
-#     python tools/fetch_cad.py --list           # show what is missing
-#     python tools/fetch_cad.py                  # download what has a url
+#     python tools/fetch_cad.py --list
 #
-# and convert them with opticaltwin/cad_importer.py (see docs/dev/ASSETS.md).
+# Download each STEP yourself from its product page and save it at its `target`
+# path under cad/. The server converts files in the folders listed in
+# docs/cad-models.md the next time a project is opened. A few entries below sit
+# in other folders (Camera, Expander, Target); the comment above each gives the
+# cad_importer command that converts it by hand.
 #
 # TOML, not YAML, so `tomllib` from the Python 3.12 standard library can read it
 # without adding a dependency.
@@ -20,9 +23,9 @@
 # Filling in `step_url`
 # ---------------------------------------------------------------------------
 # `product_page` is a plain public catalogue link and is safe to publish.
-# `step_url` is left empty on purpose: direct download links are not stable
-# across vendors, and some sit behind a form. Fill in the ones you can, or leave
-# them empty and let fetch_cad.py print the product page for a manual download.
+# `step_url` is left empty on purpose: you download the models yourself, in a
+# browser, where the vendor's terms are shown. Direct links are also not stable
+# across vendors, and some sit behind a form.
 #
 # Do NOT paste a link to a re-upload of vendor CAD on a third-party model site.
 # It does not make redistribution lawful, and it breaks whenever that upload is
@@ -127,6 +130,10 @@ type = "iris"
 target = "Iris/ID50Z_M-Step.step"
 step_url = ""
 
+# Resolution targets. Target/ is not converted automatically; convert each by
+# hand, for example:
+#   python -m opticaltwin.cad_importer cad/Target/R1L1S7N-Step.step \
+#       --type target --lod both --component-name "Target/R1L1S7N-Step"
 [[parts]]
 part = "R1L1S7N"
 type = "target"
@@ -901,6 +908,8 @@ the parts you own yourself rather than redistributing the model."""
 # Biconvex, diameter 30 mm, f = 50 mm, 14 mm centre thickness. AUTO reads the
 # widest axis as the optical one, so this one has to declare +Y by hand.
 
+# Camera/ is not converted automatically; convert by hand with --type camera,
+# as for the camera at the end of this file.
 [[parts]]
 part = "Sony A7 III + FE 28-70"
 vendor = "Sony (provenance unconfirmed)"

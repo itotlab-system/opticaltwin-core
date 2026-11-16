@@ -50,8 +50,24 @@ beams are geometric guides between components, not an optical simulation.
 
 ## Quick start
 
-Runs on **Linux, macOS and Windows**. Requires **Python 3.12 or newer** (check with `python --version`) and
-**Node 20**. Run these from the repository root.
+Runs on **Linux, macOS and Windows**.
+
+**Before you start,** check that you have Python 3.12 or newer and Node 20 or
+newer:
+
+```bash
+python --version     # Python 3.12 or higher (on Linux and macOS: python3 --version)
+node --version       # v20 or higher
+```
+
+If either is missing or older, install it from [python.org](https://www.python.org/downloads/)
+or [nodejs.org](https://nodejs.org/) (the LTS version). On Windows, tick
+*Add python.exe to PATH* in the Python installer, and open a new terminal
+afterwards.
+
+Then run these from the repository root, one at a time. After the first line
+your prompt starts with `(.venv)`: everything is installed into that folder, not
+into your system Python.
 
 **Linux and macOS** (and Windows under WSL):
 
@@ -66,7 +82,7 @@ python server.py                            # then open http://localhost:8000
 **Windows** (Command Prompt or PowerShell):
 
 ```bat
-py -m venv .venv
+python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements-app.txt
 python setup_projects.py
@@ -77,14 +93,18 @@ cd ..
 python server.py
 ```
 
-Then open http://localhost:8000. You get an example bench built from simple generated parts, ready to edit. There
-is no account and no password; the app asks once for a name to record edits
-under.
+Then open http://localhost:8000. You get an example bench built from simple
+generated parts, ready to edit. There is no account and no password; the app
+asks once for a name to record edits under.
+
+Using conda? Create an environment instead of the venv; see
+[Getting started](docs/getting-started.md#using-conda).
 
 Next steps:
 
-- **Use models of the parts you own:** [Manufacturer CAD models](docs/cad-models.md).
-  Save a STEP file into `cad/` and it appears in the part browser.
+- **Use the real models of the parts you own:** [Manufacturer CAD models](docs/cad-models.md).
+  Download a part's STEP file from the manufacturer, save it into `cad/`, and it
+  appears in the part browser with a detailed 3D model.
 - **Share it with your group:** [Running it for your lab](docs/deployment.md).
 - **Something not working, or want to change the code:**
   [Getting started](docs/getting-started.md).

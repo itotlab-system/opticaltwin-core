@@ -244,26 +244,31 @@ def _sync_cad_catalog_group(
                 *extra_arguments,
             ])
 
+# The cad/ folders converted automatically: (folder, optics:type, source axis).
+# tools/fetch_cad.py keeps its own copy of the folder names (AUTO_FOLDERS);
+# tests/test_fetch_cad.py checks the two agree.
+CAD_GROUPS = (
+    ("Breadboard", "breadboard", "+X"),
+    ("Beam Splitter", "beamsplitter", "AUTO"),
+    ("Cage", "mount", "AUTO"),
+    ("Detector", "detector", "+Z"),
+    ("Holder", "holder", "AUTO"),
+    ("Iris", "iris", "AUTO"),
+    ("LED", "led", "+Y"),
+    ("Laser", "laser", "AUTO"),
+    ("Lens", "lens", "AUTO"),
+    ("Mirror", "mirror", "AUTO"),
+    ("Mount", "mount", "+Z"),
+    ("Polarizer", "polarizer", "+Z"),
+    ("Post", "post", "AUTO"),
+    ("Rod", "rod", "+Y"),
+    ("SLM", "slm", "AUTO"),
+)
+
+
 def _sync_cad_catalog():
     """Synchronize every element category authored under cad/."""
-    groups = (
-        ("Breadboard", "breadboard", "+X"),
-        ("Beam Splitter", "beamsplitter", "AUTO"),
-        ("Cage", "mount", "AUTO"),
-        ("Detector", "detector", "+Z"),
-        ("Holder", "holder", "AUTO"),
-        ("Iris", "iris", "AUTO"),
-        ("LED", "led", "+Y"),
-        ("Laser", "laser", "AUTO"),
-        ("Lens", "lens", "AUTO"),
-        ("Mirror", "mirror", "AUTO"),
-        ("Mount", "mount", "+Z"),
-        ("Polarizer", "polarizer", "+Z"),
-        ("Post", "post", "AUTO"),
-        ("Rod", "rod", "+Y"),
-        ("SLM", "slm", "AUTO"),
-    )
-    for group_name, component_type, source_axis in groups:
+    for group_name, component_type, source_axis in CAD_GROUPS:
         _sync_cad_catalog_group(
             os.path.join(config.ROOT_DIR, "cad", group_name),
             group_name,

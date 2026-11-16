@@ -1,4 +1,4 @@
-usd-core==26.8
-trimesh==4.12.2
+usd-core==26.11
+trimesh==5.2.0
 scipy==1.18.1
-numpy==2.5.1
+numpy==2.5.4
