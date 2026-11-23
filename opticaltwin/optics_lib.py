@@ -242,36 +242,35 @@ def make_laser(path, body_mm=(80.0, 40.0, 40.0), wavelength_nm=532.0):
 
 # ==========================================================================
 # Standard library  --  the lab's catalogue of parts, generated in one place.
-# Maps a component identifier -> generator call. Each low-detail asset is written
-# to components/<component>/lo.usda; hi.usda can be added beside it later.
+# Maps a component identifier -> generator call. Each asset is written to
+# components/Generic/<name>/model.usda -- these are the parts a checkout without
+# any manufacturer CAD (the open-source repository) draws.
 # ==========================================================================
 
 LIBRARY = {
-    "Low_model/laser_fiber.usda":      (make_laser, {}),
-    "Low_model/polarizer.usda":        (make_polarizer, {}),
-    "Low_model/lens_collimating.usda": (make_lens, dict(focal_length_mm=50.0)),
-    "Low_model/lens_imaging.usda":     (make_lens, dict(focal_length_mm=150.0)),
-    "Low_model/lens_f100.usda":        (make_lens, dict(focal_length_mm=100.0)),
-    "Low_model/beamsplitter_cube.usda": (make_beamsplitter, {}),
-    "Low_model/slm.usda":              (make_slm, {}),
-    "Low_model/iris_fourier.usda":     (make_iris, dict(aperture_mm=4.0)),
-    "Low_model/lens_cylindrical.usda": (make_cylindrical_lens, dict(focal_length_mm=100.0)),
-    "Low_model/eyepiece.usda":         (make_eyepiece, {}),
-    "Low_model/camera.usda":           (make_camera, {}),
-    "Low_model/mirror_1in.usda":       (make_mirror, {}),
-    "Low_model/detector.usda":         (make_detector, {}),
+    "Generic/laser_fiber.usda":      (make_laser, {}),
+    "Generic/polarizer.usda":        (make_polarizer, {}),
+    "Generic/lens_collimating.usda": (make_lens, dict(focal_length_mm=50.0)),
+    "Generic/lens_imaging.usda":     (make_lens, dict(focal_length_mm=150.0)),
+    "Generic/lens_f100.usda":        (make_lens, dict(focal_length_mm=100.0)),
+    "Generic/beamsplitter_cube.usda": (make_beamsplitter, {}),
+    "Generic/slm.usda":              (make_slm, {}),
+    "Generic/iris_fourier.usda":     (make_iris, dict(aperture_mm=4.0)),
+    "Generic/lens_cylindrical.usda": (make_cylindrical_lens, dict(focal_length_mm=100.0)),
+    "Generic/eyepiece.usda":         (make_eyepiece, {}),
+    "Generic/camera.usda":           (make_camera, {}),
+    "Generic/mirror_1in.usda":       (make_mirror, {}),
+    "Generic/detector.usda":         (make_detector, {}),
 }
 
 def cad_library_assets(lib_dir=None):
-    """Discover generated components whose hi.usda and lo.usda both exist."""
+    """Discover the CAD-derived components: every folder holding a model.usda,
+    outside the Generic group that `build_component_library` writes."""
+    from opticaltwin import usd_utility as uu
     lib_dir = lib_dir or os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "components",
     )
-    standard_components = {
-        os.path.splitext(asset)[0]
-        for asset in LIBRARY
-    }
     assets = set()
     if not os.path.isdir(lib_dir):
         return assets
@@ -279,12 +278,10 @@ def cad_library_assets(lib_dir=None):
         relative_directory = os.path.relpath(directory, lib_dir)
         if relative_directory == ".":
             subdirectories[:] = [
-                name
-                for name in subdirectories
-                if name not in standard_components
+                name for name in subdirectories if name != uu.GENERIC_GROUP
             ]
             continue
-        if "hi.usda" not in filenames or "lo.usda" not in filenames:
+        if uu.MODEL_FILE not in filenames:
             continue
         asset = relative_directory.replace(os.sep, "/")
         assets.add(f"{asset}.usda")
@@ -292,7 +289,7 @@ def cad_library_assets(lib_dir=None):
 
 
 def component_library_assets(lib_dir=None):
-    """Return standard assets plus every generated hi/lo component pair."""
+    """Return the generated assets plus every CAD-derived component."""
     generated = {
         asset for asset in cad_library_assets(lib_dir)
         if not asset.startswith("Breadboard/")

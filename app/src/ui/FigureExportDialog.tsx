@@ -30,11 +30,14 @@ export default function FigureExportDialog({
   busy,
   onExport,
   onClose,
+  onThumbnail,
 }: {
   initial: FigureExportSettings;
   busy: boolean;
   onExport: (settings: FigureExportSettings) => void;
   onClose: () => void;
+  /** Save the current view as the project's gallery picture. */
+  onThumbnail: () => void;
 }) {
   const { t } = useSettings();
   const [settings, setSettings] = useState(initial);
@@ -123,6 +126,15 @@ export default function FigureExportDialog({
         </div>
 
         <div className="figure-export-actions">
+          <button
+            type="button"
+            className="figure-export-thumbnail"
+            data-testid="use-as-thumbnail"
+            disabled={busy}
+            onClick={onThumbnail}
+          >
+            {t("fx_thumbnail")}
+          </button>
           <button type="button" onClick={onClose}>{t("cancel")}</button>
           <button
             type="button"

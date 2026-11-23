@@ -4,8 +4,8 @@ import type { Page, Request } from "@playwright/test";
 import { loginIfNeeded, openProject } from "./helpers";
 
 // Switching a laser and placing a part answer with a light payload that the
-// client merges, instead of re-fetching the whole bench: in Detailed mode the
-// re-fetch was ~9 s and 45 MB on a large bench, and it rebuilt every mesh.
+// client merges, instead of re-fetching the whole bench: with full CAD models
+// the re-fetch was ~9 s and 45 MB on a large bench, and it rebuilt every mesh.
 
 /** Full-scene fetches of this project made while `action` runs. */
 async function fullFetchesDuring(page: Page, project: string, action: () => Promise<void>) {
@@ -24,7 +24,7 @@ async function fullFetchesDuring(page: Page, project: string, action: () => Prom
 }
 
 async function serverComponents(page: Page, api: string, project: string) {
-  const r = await page.request.get(`${api}/api/projects/${project}?renderMode=lo`);
+  const r = await page.request.get(`${api}/api/projects/${project}`);
   return ((await r.json()).components as { name: string }[]).map((c) => c.name).sort();
 }
 

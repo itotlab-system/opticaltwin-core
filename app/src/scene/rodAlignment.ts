@@ -286,9 +286,10 @@ const worldRodMountContacts = (
   }));
 };
 
-const rodLoEndOffsets = (rod: Component): number[] => {
-  const minimum = rod.attrs.rodLoEndMinX_mm;
-  const maximum = rod.attrs.rodLoEndMaxX_mm;
+// The rod body's ends, without its threaded studs (written by the CAD importer).
+const rodEndOffsets = (rod: Component): number[] => {
+  const minimum = rod.attrs.rodEndMinX_mm;
+  const maximum = rod.attrs.rodEndMaxX_mm;
   return typeof minimum === "number" && typeof maximum === "number"
     ? [minimum, maximum]
     : [];
@@ -332,7 +333,7 @@ const mountPlateEndAlignments = (
 
   // Test both Rod ends against both signs of every vertical side axis. This
   // keeps the contact rule symmetric for the near/opposite housing faces.
-  for (const endOffset of rodLoEndOffsets(rod)) {
+  for (const endOffset of rodEndOffsets(rod)) {
     const endpoint = rodPosition.clone().addScaledVector(axis, endOffset);
     const localEndpoint = endpoint.clone()
       .sub(mountPosition)
@@ -354,7 +355,7 @@ const mountPlateEndAlignments = (
             .normalize();
           if (!rodPerpendicularToFace(axis, worldNormal)) continue;
 
-          // The saved matsu2 pose is the reference relationship: the lo Rod
+          // The saved matsu2 pose is the reference relationship: the Rod body
           // endpoint meets the actual housing face. Apply that same
           // face-relative relationship for every side and world orientation.
           const plane = faceSign * faceOffset;

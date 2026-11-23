@@ -27,6 +27,7 @@ from backend.lasers import (
     _place_starting_laser,
 )
 from backend.scene import SAFE, _component_prims
+from backend.thumbnails import _thumbnail_summary
 
 bp = Blueprint("projects", __name__)
 
@@ -70,6 +71,7 @@ def _project_summary(name):
         folder=meta["folder"],
         archived=meta["archived"],
         lastEditor=_last_editor(name, modified),
+        thumbnail=_thumbnail_summary(name),
     )
 
 # How a project is filed in the gallery: which folder it sits in ("2027年度")

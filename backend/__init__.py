@@ -10,7 +10,8 @@ Modules are layered; a module imports only from the ones above it:
     components, placement          reading assets; transforms and links
     beam, board, library, catalog  beam tracing, breadboard, parts catalogue
     activity, history              who edited; undo snapshots
-    callouts, groups, pins, glb    per-project data beside the scene
+    callouts, groups, pins, glb,   per-project data beside the scene
+    thumbnails
     payload                        the JSON the client renders
     beam_edit, lasers              editing the beam; starting from a laser
     editing, undo, projects,       the routes, one blueprint per area
@@ -45,9 +46,9 @@ def create_app():
 
     from backend import (
         auth, beam_edit, callouts, editing, glb, groups, library, photo, pins,
-        projects, static, undo,
+        projects, static, thumbnails, undo,
     )
     for module in (auth, projects, editing, undo, beam_edit, callouts, groups,
-                   pins, photo, library, glb, static):
+                   pins, photo, thumbnails, library, glb, static):
         app.register_blueprint(module.bp)
     return app

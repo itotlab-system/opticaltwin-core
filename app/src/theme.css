@@ -395,6 +395,11 @@ button.big { padding: 10px 16px; font-size: 14px; }
   padding: 14px; cursor: pointer; transition: border-color .15s, transform .1s;
   display: flex; flex-direction: column; }
 .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+/* The hover lift (transform) puts a card in its own layer, so the card *below*
+   an open "⋯" menu jumped in front of it the moment the pointer reached the
+   menu, and the click opened that project instead. The card whose menu is
+   open stays on top. */
+.card:has(.card-menu-btn[aria-expanded="true"]) { position: relative; z-index: 5; }
 .card-top { display: flex; justify-content: space-between; align-items: center; }
 .card-name { font-weight: 600; font-size: 15px; flex: 1; }
 .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -446,6 +451,17 @@ button.big { padding: 10px 16px; font-size: 14px; }
 }
 .card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .card-thumb-wait { font-size: 12px; }
+/* A saved picture and its "outdated" tag share one grid cell, so the tag sits
+   over the picture without positioning anything: a positioned picture would
+   paint over the card menu that drops down from the card above it. */
+.card-thumb-stack { display: grid; width: 100%; height: 100%; }
+.card-thumb-stack > * { grid-area: 1 / 1; }
+.card-thumb-outdated {
+  align-self: end; justify-self: end; margin: 6px;
+  padding: 1px 6px; border-radius: 4px;
+  font-size: 11px; line-height: 16px;
+  color: #fff; background: rgba(0, 0, 0, 0.55);
+}
 /* One row of type colours, clipped: a signal of what is on the bench, not the
    card's main content any more — the picture is. */
 .card-foot { margin-top: 6px;
@@ -1462,3 +1478,5 @@ button.big { padding: 10px 16px; font-size: 14px; }
 .photo-svg.path { cursor: crosshair; }
 .photo-turn.bad rect { stroke: #f87171; fill: rgba(248, 113, 113, 0.4); }
 .photo-turn-tag.bad { fill: #fecaca; }
+/* Saving the gallery picture is a side action: it sits apart from Cancel/Export. */
+.figure-export-thumbnail { margin-right: auto; }

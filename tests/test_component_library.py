@@ -22,12 +22,15 @@ requires_ocp = unittest.skipUnless(HAS_OCP, "requires cadquery-ocp")
 
 
 class NestedComponentLibraryTests(unittest.TestCase):
-    def test_nested_hi_lo_pair_is_discovered_as_grouped_asset(self):
+    def test_nested_model_is_discovered_as_grouped_asset(self):
         with tempfile.TemporaryDirectory() as directory:
             component = Path(directory) / "Rod" / "ER1-Step"
             component.mkdir(parents=True)
-            (component / "hi.usda").touch()
-            (component / "lo.usda").touch()
+            (component / "model.usda").touch()
+            # The generated parts are not CAD-derived, whatever their file.
+            generic = Path(directory) / "Generic" / "lens_f100"
+            generic.mkdir(parents=True)
+            (generic / "model.usda").touch()
 
             self.assertEqual(
                 optics_lib.cad_library_assets(directory),
@@ -43,9 +46,8 @@ class NestedComponentLibraryTests(unittest.TestCase):
             usd_utility.get_component_usda_path(
                 "/components",
                 "Rod/ER1-Step.usda",
-                "hi",
             ),
-            "/components/Rod/ER1-Step/hi.usda",
+            "/components/Rod/ER1-Step/model.usda",
         )
 
     @requires_ocp
@@ -71,7 +73,6 @@ class NestedComponentLibraryTests(unittest.TestCase):
             convert.assert_called_once_with([
                 str(cad_directory / "ER1-Step.step"),
                 "--type", "rod",
-                "--lod", "both",
                 "--component-name", "Rod/ER1-Step",
                 # One element, not two: a "-Z" axis passed separately is read
                 # by argparse as an unknown option rather than as a value.
@@ -81,7 +82,7 @@ class NestedComponentLibraryTests(unittest.TestCase):
     def test_asset_rotation_is_not_returned_as_placement_rotation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            asset_path = root / "lo.usda"
+            asset_path = root / "model.usda"
             asset = Usd.Stage.CreateNew(str(asset_path))
             asset_prim = UsdGeom.Xform.Define(asset, "/Part").GetPrim()
             asset.SetDefaultPrim(asset_prim)

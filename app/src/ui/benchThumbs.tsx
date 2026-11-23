@@ -250,14 +250,14 @@ function BenchForge({
     // idle; it must not interrupt a bench already being drawn.
   }, [order, current]);
 
-  // `lo` geometry: a card-sized picture cannot show the difference, and `hi`
-  // would pull every CAD asset in the project across the wire per card.
+  // Only for a bench with no saved picture yet: this pulls the whole project
+  // payload, with every CAD model on it, for one card.
   useEffect(() => {
     setData(null);
     if (!current) return;
     let live = true;
     api
-      .getProject(current, "lo")
+      .getProject(current)
       .then((project) => {
         if (live) setData(project);
       })

@@ -115,3 +115,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 }
 
 export const useSettings = () => useContext(Ctx);
+
+/**
+ * Re-provide settings already read with useSettings(). A drei <Html> renders
+ * its children into a React root of its own, which none of the app's
+ * providers reach (R3F's <Canvas> bridges context; <Html> does not), so a
+ * component inside one that calls useSettings() gets null.
+ */
+export function SettingsBridge({ value, children }: { value: Settings; children: ReactNode }) {
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}

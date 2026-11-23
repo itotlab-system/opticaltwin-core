@@ -281,6 +281,65 @@ def _box_hit(origin, direction, comp):
     return distance, point, _scale(axes[near_axis], near_sign)
 
 
+def _euler_xyz_axes(rot_x_deg, rot_y_deg, rot_z_deg):
+    """Columns of Rz * Ry * Rx (Three.js' default XYZ order), as three axes."""
+    return _local_axes({"rotX": rot_x_deg, "rotY": rot_y_deg, "rotZ": rot_z_deg})
+
+
+def _model_box_hit(origin, direction, comp):
+    """Hit the part's envelope box with its model rotation applied.
+
+    centerX..Z_mm and sizeX..Z_mm are measured in the model's own frame,
+    before the rotation its root carries (`modelRotation` about
+    `rotationCenter`, which the viewport applies too). `_box_hit` ignores that
+    rotation; for a mount whose model is turned 90 degrees, its box then lies
+    across the wrong axes and stops a beam that passes beside the real part.
+    """
+    model_rotation = comp.get("modelRotation") or [0.0, 0.0, 0.0]
+    if not any(abs(_number(value, 0.0)) > 1e-9 for value in model_rotation):
+        return _box_hit(origin, direction, comp)
+    attrs = comp.get("attrs", {})
+    pivot = [_number(value, 0.0) for value in (comp.get("rotationCenter") or [0, 0, 0])]
+    model_axes = _euler_xyz_axes(*[_number(value, 0.0) for value in model_rotation])
+    offset = [
+        _number(attrs.get(key), 0.0) - pivot[i]
+        for i, key in enumerate(("centerX_mm", "centerY_mm", "centerZ_mm"))
+    ]
+    rotated_center = list(pivot)
+    for axis, value in zip(model_axes, offset):
+        rotated_center = _add(rotated_center, _scale(axis, value))
+    center = _component_point_to_world(comp, rotated_center)
+    axes = [_component_vector_to_world(comp, axis) for axis in model_axes]
+
+    relative = _sub(origin, center)
+    local_origin = [_dot(relative, axis) for axis in axes]
+    local_direction = [_dot(direction, axis) for axis in axes]
+    half_sizes = _box_half_sizes(comp)
+    near, far = -math.inf, math.inf
+    near_axis = 0
+    near_sign = 1.0
+    for i in range(3):
+        if abs(local_direction[i]) < 1e-10:
+            if abs(local_origin[i]) > half_sizes[i]:
+                return None
+            continue
+        t1 = (-half_sizes[i] - local_origin[i]) / local_direction[i]
+        t2 = (half_sizes[i] - local_origin[i]) / local_direction[i]
+        enter, leave = min(t1, t2), max(t1, t2)
+        if enter > near:
+            near = enter
+            near_axis = i
+            near_sign = -1.0 if t1 < t2 else 1.0
+        far = min(far, leave)
+        if near > far:
+            return None
+    distance = near if near > EPSILON_MM else far
+    if distance <= EPSILON_MM:
+        return None
+    point = _add(origin, _scale(direction, distance))
+    return distance, point, _scale(axes[near_axis], near_sign)
+
+
 def _matrix_point(matrix, point):
     x, y, z = point
     return [
@@ -558,7 +617,7 @@ def _intersection(origin, direction, comp):
         hit = (
             _primitive_box_hit(origin, direction, comp)
             if comp.get("primitives")
-            else _box_hit(origin, direction, comp)
+            else _model_box_hit(origin, direction, comp)
         )
     return (*hit, None) if hit else None
 

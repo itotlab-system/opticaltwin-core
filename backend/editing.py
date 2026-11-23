@@ -46,10 +46,7 @@ bp = Blueprint("editing", __name__)
 @bp.get("/api/projects/<name>")
 def get_project(name):
     stage = Usd.Stage.Open(scene.project_setup(name)) #name="project名"で、このprojectからsetup.usdaをusda形式でstageに読み込む
-    render_mode = request.args.get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
-    return jsonify(_project_payload(name, stage, render_mode))
+    return jsonify(_project_payload(name, stage))
 
 @bp.post("/api/projects/<name>/board/model")
 @records_history
@@ -57,9 +54,6 @@ def update_board_model(name):
     """Change the fixed board CAD reference without authoring a transform."""
     body = request.get_json(force=True)
     asset = body.get("asset")
-    render_mode = body.get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
     board_assets = {
         candidate for candidate in ol.cad_library_assets(config.LIB_DIR)
         if candidate.startswith("Breadboard/")
@@ -78,7 +72,7 @@ def update_board_model(name):
 
     _replace_component_reference(board, asset, os.path.dirname(setup))
     stage.GetRootLayer().Save()
-    payload = _project_payload(name, stage, render_mode)
+    payload = _project_payload(name, stage)
     payload["ok"] = True
     return jsonify(payload)
 
@@ -114,9 +108,6 @@ def update_board(name):
     )):
         abort(400, "breadboard extents must be finite")
 
-    render_mode = body.get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
     setup = scene.project_setup(name)
     stage = Usd.Stage.Open(setup)
     _set_board_extents(
@@ -128,7 +119,7 @@ def update_board(name):
     )
     stage.GetRootLayer().Save()
 
-    payload = _project_payload(name, stage, render_mode)
+    payload = _project_payload(name, stage)
     payload["ok"] = True
     return jsonify(payload)
 
@@ -168,10 +159,7 @@ def update_component(name, comp):
         _sync_linked_post(stage, prim)
     stage.GetRootLayer().Save()
 
-    render_mode = body.get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
-    payload = _move_payload(name, stage, render_mode)
+    payload = _move_payload(name, stage)
     payload["ok"] = True
     return jsonify(payload)
 
@@ -183,9 +171,6 @@ def update_component_model(name, comp):
         abort(400)
     body = request.get_json(force=True)
     asset = body.get("asset")
-    render_mode = body.get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
     if not isinstance(asset, str) or asset not in ol.component_library_assets(config.LIB_DIR):
         abort(400, "unknown asset")
 
@@ -209,7 +194,7 @@ def update_component_model(name, comp):
         _sync_linked_post(stage, holder)
     stage.GetRootLayer().Save()
 
-    payload = _project_payload(name, stage, render_mode)
+    payload = _project_payload(name, stage)
     payload["ok"] = True
     return jsonify(payload)
 
@@ -228,9 +213,6 @@ def update_components(name):
     if not isinstance(updates, list) or not updates:
         abort(400, "updates must be a non-empty list")
 
-    render_mode = body.get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
 
     setup = scene.project_setup(name)
     stage = Usd.Stage.Open(setup)
@@ -278,7 +260,7 @@ def update_components(name):
             _sync_linked_post(stage, prim)
     stage.GetRootLayer().Save()
 
-    payload = _move_payload(name, stage, render_mode)
+    payload = _move_payload(name, stage)
     payload["ok"] = True
     return jsonify(payload)
 
@@ -290,12 +272,9 @@ def add_component(name):
     The light move payload (transforms + beam + undo state) plus the new part
     itself. A holder brings its post along, so every part that was not there
     before is sent. The client used to re-fetch the whole bench after each
-    placement: ~9 s and 45 MB in hi mode on a 47-part bench.
+    placement: ~9 s and 45 MB with full CAD models on a 47-part bench.
     """
     body = request.get_json(force=True)
-    render_mode = body.get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
     setup = scene.project_setup(name)
     stage = Usd.Stage.Open(setup)
     before = {prim.GetName() for prim in _component_prims(stage)}
@@ -308,10 +287,10 @@ def add_component(name):
     stage.GetRootLayer().Save()
 
     added = {prim.GetName() for prim in _component_prims(stage)} - before
-    payload = _move_payload(name, stage, render_mode)
+    payload = _move_payload(name, stage)
     payload.update(
         ok=True, name=comp_name, snapped=snapped,
-        added=_project_components(stage, render_mode, only_names=added),
+        added=_project_components(stage, only_names=added),
         beamPath=_beam_path(stage),
     )
     return jsonify(payload)
@@ -422,7 +401,7 @@ def add_generic_part(name):
 def duplicate_components(name):
     """Copy components into a project — the paste half of copy & paste.
 
-    Body: {names: [...], sourceProject?, offsetX?, offsetY?, renderMode?}
+    Body: {names: [...], sourceProject?, offsetX?, offsetY?}
 
     The prim *spec* is copied rather than the library asset re-placed, so the
     reference and every authored override (z, rotations, per-instance optics:
@@ -439,9 +418,6 @@ def duplicate_components(name):
     names = body.get("names")
     if not isinstance(names, list) or not names:
         abort(400, "names must be a non-empty list")
-    render_mode = body.get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
     offset_x = float(body.get("offsetX", ol.GRID_MM))
     offset_y = float(body.get("offsetY", ol.GRID_MM))
     source_project = body.get("sourceProject") or name
@@ -503,7 +479,7 @@ def duplicate_components(name):
 
     layer.Save()
 
-    payload = _project_payload(name, stage, render_mode)
+    payload = _project_payload(name, stage)
     payload["ok"] = True
     payload["names"] = [name_map[comp] for comp in sources]
     return jsonify(payload)

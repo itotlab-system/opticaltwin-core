@@ -1,6 +1,6 @@
 /**
- * Thumbnails for the part browser, rendered from the catalogue geometry the
- * project payload already carries (`libraryPreviews`).
+ * Thumbnails for the part browser, rendered from each part's own model,
+ * fetched one part at a time (`api.libraryPreview`).
  *
  * One offscreen canvas renders the parts **one at a time** into cached PNG data
  * URLs, rather than a live <Canvas> per tile: a browser gives a page ~16 WebGL
@@ -14,7 +14,7 @@ import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { Component } from "../types";
 import Component3D from "../scene/Component3D";
-import { api } from "../api";
+import { partModel } from "../partModels";
 
 const SIZE = 320;                 // rendered thumbnail, in pixels (square)
 const SETTLE_FRAMES = 2;          // let textures/materials land before capture
@@ -193,9 +193,6 @@ function ThumbnailForge({
   const attempted = useRef<Set<string>>(new Set());
   const [current, setCurrent] = useState<string | null>(null);
   const [detailed, setDetailed] = useState<Component | null>(null);
-  // Geometry already fetched, so the network wait for part n+1 overlaps the
-  // render of part n instead of following it.
-  const fetched = useRef<Map<string, Component>>(new Map());
 
   // The queue re-sorts as the grid scrolls. Read it through a ref inside the
   // fetch effect: depending on `order` there re-ran the effect on every scroll
@@ -218,46 +215,32 @@ function ThumbnailForge({
     // idle; it must not interrupt a part already being drawn.
   }, [order, current]);
 
-  // The catalogue in the project payload is `lo`, and a lo asset is a
-  // bounding-box stand-in — every post holder would be the same anonymous
-  // block. Pull the real geometry for this one part, then draw it.
+  // The catalogue in the project payload carries no geometry. Pull this one
+  // part's model, then draw it.
   useEffect(() => {
     setDetailed(null);
     if (!current) return;
     let live = true;
 
-    const ready = fetched.current.get(current);
-    if (ready) {
-      setDetailed(ready);
-    } else {
-      api
-        .libraryPreview(current, "hi")
-        .then((r) => {
-          if (live) setDetailed(r.component);
-        })
-        // The lo part still makes a recognisable silhouette; a tile of it beats
-        // no tile at all.
-        .catch(() => {
-          if (live) setDetailed(previews[current]);
-        });
-    }
+    partModel(current)
+      .then((model) => {
+        if (live) setDetailed(model);
+      })
+      // The metadata alone still draws a procedural stand-in; a tile of it
+      // beats no tile at all.
+      .catch(() => {
+        if (live) setDetailed(previews[current]);
+      });
 
     // Warm the part behind this one, so its download overlaps this render
-    // instead of following it. Exactly one spare is held: these assets are
-    // ~940 kB each and a deeper queue is memory spent on guesses about where
-    // the user will scroll.
+    // instead of following it. One spare only: these models are up to ~1 MB
+    // each, and `partModels` holds just the last few.
     const at = queue.current.indexOf(current);
     const upcoming = at < 0 ? null : pendingFrom(at + 1);
-    if (upcoming && !fetched.current.has(upcoming)) {
-      api
-        .libraryPreview(upcoming, "hi")
-        .then((r) => {
-          fetched.current.clear();
-          fetched.current.set(upcoming, r.component);
-        })
-        .catch(() => {
-          /* it will be fetched again, in its own turn */
-        });
+    if (upcoming) {
+      partModel(upcoming).catch(() => {
+        /* it will be fetched again, in its own turn */
+      });
     }
 
     return () => {

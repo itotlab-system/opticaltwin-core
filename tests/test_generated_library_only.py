@@ -109,23 +109,21 @@ def test_step_file_without_the_converter_does_not_break_projects(
     assert "requirements-cad.txt" in capsys.readouterr().out
 
 
-def test_detailed_mode_keeps_parts_that_have_no_detailed_model(generated_only):
-    """Generated parts have one model. "Detailed" must show it, not hide them.
+def test_every_generated_part_is_drawn(generated_only):
+    """Generated parts have one model each, and every one of them is drawn.
 
-    Only CAD-derived parts carry a separate hi model. Dropping every part
-    without one left a public checkout's bench empty in detailed mode, with
-    the beam still drawn through where the parts had been.
+    A public checkout has no CAD at all; a part that silently drew nothing
+    would leave the bench empty, with the beam still traced through it.
     """
     setup_projects.create_project("example", "slm_imaging")
 
-    simple = generated_only.get("/api/projects/example?renderMode=lo").get_json()
-    detailed = generated_only.get("/api/projects/example?renderMode=hi").get_json()
+    scene = generated_only.get("/api/projects/example").get_json()
 
     drawn = {
-        c["name"] for c in detailed["components"]
+        c["name"] for c in scene["components"]
         if c.get("primitives") or c.get("meshes")
     }
-    assert drawn == {c["name"] for c in simple["components"]}
+    assert drawn == {c["name"] for c in scene["components"]}
     assert len(drawn) == 10
 
 

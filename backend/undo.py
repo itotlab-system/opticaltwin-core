@@ -1,6 +1,6 @@
 """The undo/redo routes. The history itself lives in backend/history.py."""
 
-from flask import Blueprint, abort, jsonify, request
+from flask import Blueprint, jsonify
 from pxr import Usd
 
 from backend import history
@@ -11,7 +11,7 @@ from backend.payload import _project_payload
 
 bp = Blueprint("undo", __name__)
 
-def _step_history(name, take, keep, render_mode):
+def _step_history(name, take, keep):
     """Move one step between the undo and redo stacks.
 
     `take` is the stack to pop the snapshot from and `keep` the one that gets
@@ -28,7 +28,7 @@ def _step_history(name, take, keep, render_mode):
         _restore_layer(name, snapshot)
 
     stage = Usd.Stage.Open(scene.project_setup(name))
-    payload = _project_payload(name, stage, render_mode)
+    payload = _project_payload(name, stage)
     payload["ok"] = True
     payload["stepped"] = snapshot is not None   # False = nothing left to do
     return jsonify(payload)
@@ -36,20 +36,14 @@ def _step_history(name, take, keep, render_mode):
 @bp.post("/api/projects/<name>/undo")
 def undo_project(name):
     """Rewind one editing step. Returns the restored scene."""
-    render_mode = (request.get_json(silent=True) or {}).get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
-    response = _step_history(name, "undo", "redo", render_mode)
+    response = _step_history(name, "undo", "redo")
     if response.get_json().get("stepped"):
         _record_activity(name)
     return response
 
 @bp.post("/api/projects/<name>/redo")
 def redo_project(name):
-    render_mode = (request.get_json(silent=True) or {}).get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
-    response = _step_history(name, "redo", "undo", render_mode)
+    response = _step_history(name, "redo", "undo")
     if response.get_json().get("stepped"):
         _record_activity(name)
     return response

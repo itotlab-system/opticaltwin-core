@@ -32,6 +32,8 @@ import {
   type RodAlignmentState,
 } from "./rodAlignment";
 import { removeAxisFreeRotationHandles, type GizmoControl, type GizmoRef } from "./gizmo";
+import { frameBoxForCard } from "../cardFraming";
+import { partModel } from "../partModels";
 import type { TransformDelta } from "../groups";
 
 // One raycaster for anchor picking; it is only used inside pickAnchor, one
@@ -82,6 +84,12 @@ export type CaptureOptions = {
   background?: "current" | "white" | "transparent";
   /** Discussion pins are editor furniture, not part of a published figure. */
   hidePins?: boolean;
+  /**
+   * Gallery card aspect (width / height). When set, the camera is moved for
+   * the shot — same viewing direction, aimed and distanced so every part fits
+   * the card's crop — and put back afterwards.
+   */
+  frameForCard?: number;
 };
 
 export type CapturedFrame = {
@@ -240,6 +248,19 @@ const Viewport = forwardRef<ViewportHandle, {
   const [selectedPinRef, setSelectedPinRef] = useState<THREE.Group | null>(null);
   const pinRefs = useRef<Record<string, THREE.Group | null>>({});
   const [previewPoint, setPreviewPoint] = useState<THREE.Vector3 | null>(null);
+  // The part being placed, with its model: the payload's catalogue carries
+  // only metadata, so the ghost fetches the geometry when placing starts and
+  // draws the metadata-only stand-in until it arrives.
+  const [placingModel, setPlacingModel] = useState<Component | null>(null);
+  useEffect(() => {
+    setPlacingModel(null);
+    if (!isPlacing || !placingAsset) return;
+    let live = true;
+    partModel(placingAsset)
+      .then((model) => { if (live) setPlacingModel(model); })
+      .catch(() => { /* the stand-in stays */ });
+    return () => { live = false; };
+  }, [isPlacing, placingAsset]);
   const [previewRay, setPreviewRay] = useState<THREE.Ray | null>(null);
   // Alt held while placing = drop it beside the beam on purpose, no snap.
   const [freePlace, setFreePlace] = useState(false);
@@ -274,6 +295,14 @@ const Viewport = forwardRef<ViewportHandle, {
     center: [number, number, number];
   } | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  // The orbit controls, so a card shot can move their target with the camera
+  // and put both back: moving the camera alone, the controls would swing it
+  // round to keep looking at the old target on the next frame.
+  const controlsRef = useRef<{ target: THREE.Vector3; update: () => void } | null>(null);
+  // Read by the imperative handle, which is created once: a ref, so a card shot
+  // frames the parts on the bench now rather than the ones at first render.
+  const componentsRef = useRef(components);
+  componentsRef.current = components;
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.Camera | null>(null);
   // The move and rotate gizmos are two independent TransformControls, and each
@@ -349,6 +378,36 @@ const Viewport = forwardRef<ViewportHandle, {
         setHideAxisTriad(true);
         if (options.hidePins) setHidePins(true);
 
+        // A card shot frames the parts, not whatever the camera was on: the
+        // board and an escaping beam are left out of the fit, as the in-browser
+        // thumbnails do, so the setup fills the card instead of a corner of it.
+        const camera = cameraRef.current;
+        const controls = controlsRef.current;
+        let restoreCamera = () => {};
+        if (options.frameForCard && camera instanceof THREE.PerspectiveCamera && controls) {
+          const box = new THREE.Box3();
+          for (const c of componentsRef.current) {
+            const object = refs.current[c.name];
+            if (object && c.type !== "breadboard") box.expandByObject(object);
+          }
+          if (!box.isEmpty()) {
+            const savedPosition = camera.position.clone();
+            const savedTarget = controls.target.clone();
+            const frame = frameBoxForCard(
+              box, camera.getWorldDirection(new THREE.Vector3()), camera.up,
+              camera.fov, camera.aspect, options.frameForCard,
+            );
+            camera.position.copy(frame.position);
+            controls.target.copy(frame.target);
+            controls.update();
+            restoreCamera = () => {
+              camera.position.copy(savedPosition);
+              controls.target.copy(savedTarget);
+              controls.update();
+            };
+          }
+        }
+
         // Everything the capture changes is put back in `restore`, including on
         // the failure paths: leaving the renderer at 4x or the scene without a
         // background would show up immediately as a blurred, transparent
@@ -358,6 +417,7 @@ const Viewport = forwardRef<ViewportHandle, {
         const baseBackground = scene.background;
         const baseAlpha = renderer.getClearAlpha();
         const restore = () => {
+          restoreCamera();
           renderer.setPixelRatio(basePixelRatio);
           scene.background = baseBackground;
           renderer.setClearAlpha(baseAlpha);
@@ -1017,7 +1077,9 @@ const Viewport = forwardRef<ViewportHandle, {
       {isPlacing && placingAsset && previewPoint && (
         <Component3D
           c={{
-            ...(libraryPreviews?.[placingAsset] ?? {}),
+            ...(placingModel?.asset === placingAsset
+              ? placingModel
+              : libraryPreviews?.[placingAsset] ?? {}),
             name: "Placement preview",
             type: placingType,
             x: placingSnap?.x ?? previewPoint.x,
@@ -1321,6 +1383,7 @@ const Viewport = forwardRef<ViewportHandle, {
       )}
 
       <OrbitControls
+        ref={controlsRef as never}
         makeDefault
         enableDamping
         target={[cx, cy, cz]}

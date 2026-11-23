@@ -17,6 +17,9 @@ resolves to the latest release, so a citation of it stays valid.
 
 ### Fixed
 
+- **One unreadable STEP file in `cad/` stopped every project from opening.**
+  It is now skipped with a one-line message in the server's terminal, in
+  English, and tried again once the file is replaced.
 - **A fresh checkout showed an empty 3D view.** Opening any project swapped its
   generated breadboard for a manufacturer CAD board that this repository does
   not ship, leaving a board with no geometry. The generated board is now kept
@@ -38,6 +41,22 @@ resolves to the latest release, so a citation of it stays valid.
 
 ### Changed
 
+- **Gallery cards show a saved picture of the bench.** The editor takes the
+  picture from the view already on screen, when you leave a bench or from
+  *Export figure → Use as gallery thumbnail*, and the gallery shows that file
+  instead of every browser rendering every bench. A card whose bench changed
+  since its picture was taken is marked *outdated* until the next one.
+- **One model per part; the Simple / Detailed switch is gone.** Every part has
+  exactly one model, `components/<Group>/<Model>/model.usda`, instead of a
+  light `lo.usda` and a detailed `hi.usda`, and the editor always draws it.
+  The generated parts moved from `components/Low_model/` to
+  `components/Generic/`. Projects saved before this keep working: their
+  references are rewritten the first time they are opened. The CAD importer
+  writes one `model.usda`; its `--lod` and `--lo-*` options are removed, and
+  `--hi-linear-deflection` / `--hi-angular-deflection` are now
+  `--linear-deflection` / `--angular-deflection`. An existing `components/`
+  updates itself: the generated parts are rebuilt and CAD parts re-converted
+  from `cad/` the next time a project opens.
 - **Design from a laser works without CAD.** A library with no manufacturer
   lasers offers the generated 532 nm laser, so a new project can start from a
   beam straight after installing.
@@ -46,8 +65,11 @@ resolves to the latest release, so a citation of it stays valid.
 - **Windows commands in the quick start.** The README says which systems it runs
   on and gives a Windows block next to the Linux and macOS one; the commands
   shown before failed on their first line in Command Prompt.
+- The CAD guide starts with a three-part first try (lens, mirror, breadboard),
+  says to keep the manufacturer's file name, since tuned conversion settings
+  are matched by it, and says where conversion errors appear.
 - **Adding a manufacturer model is one documented flow**, from the vendor's
-  page to the part on the bench in *Detailed* view
+  page to the part on the bench
   ([Manufacturer CAD models](docs/cad-models.md)). Models are downloaded by
   hand; `tools/fetch_cad.py --list` now prints, for each missing part, the page
   to open and the path to save to, and flags the few that need converting by

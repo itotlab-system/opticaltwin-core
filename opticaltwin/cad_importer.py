@@ -1,39 +1,38 @@
-"""Convert STEP CAD data into OpticalTwin hi.usda and lo.usda assets.
+"""Convert STEP CAD data into an OpticalTwin component model (model.usda).
+
+Each component has exactly one model: components/<Group>/<Model>/model.usda.
 
 Examples:
     # Existing LA4380-A lens (backward-compatible default)
     python -m opticaltwin.cad_importer
 
-    # Generate a high-detail model for any other component
+    # Convert any other component
     python -m opticaltwin.cad_importer cad/mirror/M1.step --type mirror \
         --source-forward-axis +X --attr diameter_mm=25.4 \
         --attr reflectivity=0.99 --color 0.85 0.85 0.9
 
-    # Generate both high- and low-detail models
-    python -m opticaltwin.cad_importer cad/mirror/M1.step --type mirror --lod both
-
-    # Rod: five CAD Mesh parts in hi, one metallic Cylinder in lo
-    python -m opticaltwin.cad_importer cad/Rod/ER1.5-Step.step --type rod --lod both \
+    # Rod: five CAD Mesh parts (body, inner and outer ends)
+    python -m opticaltwin.cad_importer cad/Rod/ER1.5-Step.step --type rod \
         --source-forward-axis +Y
 
-    # Generate every Rod STEP into components/Rod/<STEP name>/
-    python -m opticaltwin.cad_importer cad/Rod --type rod --lod both \
+    # Convert every Rod STEP into components/Rod/<STEP name>/
+    python -m opticaltwin.cad_importer cad/Rod --type rod \
         --source-forward-axis +Y
 
-    # Generate every Laser STEP; each CAD model's longitudinal axis is detected
-    python -m opticaltwin.cad_importer cad/Laser --type laser --lod both \
+    # Convert every Laser STEP; each CAD model's longitudinal axis is detected
+    python -m opticaltwin.cad_importer cad/Laser --type laser \
         --source-forward-axis auto
 
     # An assembly whose STEP carries no colors: keep its leaves as named parts
     # and paint them. Unnamed leaves fall back to --color.
-    python -m opticaltwin.cad_importer cad/SLM/EXULUS-SE1-Step.step --type slm --lod both \
+    python -m opticaltwin.cad_importer cad/SLM/EXULUS-SE1-Step.step --type slm \
         --preserve-step-parts --color 0.051269 0.051269 0.051269 \
         --part-color EEC4011_housing=0.62,0.09,0.10 \
         --part-color RDP551F_MODULE=0.32,0.34,0.37
 
     # A one-leaf assembly whose pieces come from STEP face colors instead: aim
     # at the meshes this writer names. Narrow rules first, broad ones after.
-    python -m opticaltwin.cad_importer cad/Mount/ID25_M-Step.step --type iris --lod both \
+    python -m opticaltwin.cad_importer cad/Mount/ID25_M-Step.step --type iris \
         --mesh-color CADMesh_004=0.35,0.36,0.38 \
         --mesh-color CADMesh=0.051269,0.051269,0.051269 \
         --mesh-opacity CADMesh_004=0.2
@@ -48,7 +47,6 @@ import re
 import sys
 from typing import Any
 
-from scipy.spatial import ConvexHull, QhullError
 from OCP.IFSelect import IFSelect_ReturnStatus
 from OCP.STEPCAFControl import STEPCAFControl_Reader
 from OCP.TopoDS import TopoDS_Shape, TopoDS_Compound
@@ -86,24 +84,10 @@ ROOT_DIR = Path(__file__).resolve().parent.parent  # the repository
 DEFAULT_COMPONENT_NAME = "Lens/LA1417-AB-Step"
 DEFAULT_DISPLAY_COLOR = (0.4, 0.7, 1.0)
 FORWARD_AXES = ("+X", "-X", "+Y", "-Y", "+Z", "-Z")
-LOD_NAMES = ("hi", "lo")
-LOD_MESH_SETTINGS = {
-    "hi": (0.1, 0.5),
-    "lo": (2.0, 1.0),
-}
-LO_PROXY_MODES = (
-    "auto",
-    "primitive",
-    "surface",
-    "convex-hull",
-    "mesh",
-    "box",
-    "cylinder",
-)
-DEFAULT_LO_TARGET_TRIANGLES = 2000
-LO_TARGET_TRIANGLES_BY_TYPE = {
-    "lens": 300,
-}
+MODEL_FILE = "model.usda"
+# Surface tessellation tolerances: distance (mm) and angle (rad).
+MESH_LINEAR_DEFLECTION_MM = 0.1
+MESH_ANGULAR_DEFLECTION_RAD = 0.5
 
 
 @dataclass
@@ -117,27 +101,10 @@ class MeshPart:
 
 
 @dataclass
-class LoPalette:
-    selected_colors: list[tuple[float, float, float]]
-    color_mapping: dict[
-        tuple[float, float, float],
-        tuple[float, float, float],
-    ]
-    area_ratios: list[float]
-    source_color_count: int
-
-
-@dataclass
 class SourceRegion:
     points: list[tuple[float, float, float]]
     indices: list[int]
     triangle_colors: list[tuple[float, float, float]]
-
-
-@dataclass(frozen=True)
-class LensProfile:
-    kind: str
-    flat_side: str | None
 
 
 @dataclass(frozen=True)
@@ -387,7 +354,7 @@ def load_step_with_colors(step_path: Path):
 
     status = reader.ReadFile(str(step_path))
     if status != IFSelect_ReturnStatus.IFSelect_RetDone:
-        raise RuntimeError(f"STEPファイルの読み込みに失敗しました: {step_path}")
+        raise RuntimeError("the file could not be read as a STEP model")
     if not reader.Transfer(document):
         raise RuntimeError(
             f"STEPファイルをXCAFドキュメントへ変換できませんでした: {step_path}"
@@ -431,7 +398,7 @@ def mesh_shape(
         raise ValueError("空のShapeはメッシュ化できません")
 
     # STEP may contain an existing triangulation. Remove it so the requested
-    # hi/lo settings always determine the generated mesh density.
+    # deflection settings always determine the generated mesh density.
     BRepTools.Clean_s(shape)
 
     mesher = BRepMesh_IncrementalMesh(
@@ -785,7 +752,7 @@ def is_rod_component(component_type: str, root_prim_name: str) -> bool:
     )
 
 
-def split_rod_hi_parts(parts: list[MeshPart]) -> list[MeshPart]:
+def split_rod_parts(parts: list[MeshPart]) -> list[MeshPart]:
     """Keep Rod CAD geometry intact while exposing exactly five USD meshes.
 
     The common Rod STEP layout contains one wide central body color region and
@@ -797,7 +764,7 @@ def split_rod_hi_parts(parts: list[MeshPart]) -> list[MeshPart]:
     if len(parts) == 5:
         return parts
     if not parts:
-        raise ValueError("Rodのhi生成に使用できるMesh部品がありません")
+        raise ValueError("Rodの生成に使用できるMesh部品がありません")
 
     all_points = [point for part in parts for point in part.points]
     minimum, maximum = oriented_bounds(all_points, "+X")
@@ -901,7 +868,7 @@ def split_rod_hi_parts(parts: list[MeshPart]) -> list[MeshPart]:
                 triangle,
             ))
     if len(triangle_records) < 5:
-        raise ValueError("Rodのhiを5部品へ分けるのに十分な面がありません")
+        raise ValueError("Rodを5部品へ分けるのに十分な面がありません")
 
     triangle_records.sort(key=lambda record: record[0])
     groups: list[list[tuple[float, MeshPart, list[int]]]] = [
@@ -1066,210 +1033,92 @@ def extract_source_regions(
         if indices:
             regions.append(SourceRegion(points, indices, triangle_colors))
     if not regions:
-        raise RuntimeError("lo用の形状領域を取得できませんでした")
+        raise RuntimeError("形状領域を取得できませんでした")
     return regions
 
 
-def combine_source_regions(
-    regions: list[SourceRegion],
-) -> tuple[
-    list[tuple[float, float, float]],
-    list[int],
-    list[tuple[float, float, float]],
-]:
-    points = []
-    indices = []
-    colors = []
-    for region in regions:
-        offset = len(points)
-        points.extend(region.points)
-        indices.extend(index + offset for index in region.indices)
-        colors.extend(region.triangle_colors)
-    return points, indices, colors
-
-
-def triangle_area(
-    point1: tuple[float, float, float],
-    point2: tuple[float, float, float],
-    point3: tuple[float, float, float],
-) -> float:
-    """Return a triangle's surface area."""
-    ax = point2[0] - point1[0]
-    ay = point2[1] - point1[1]
-    az = point2[2] - point1[2]
-    bx = point3[0] - point1[0]
-    by = point3[1] - point1[1]
-    bz = point3[2] - point1[2]
-    cross_x = ay * bz - az * by
-    cross_y = az * bx - ax * bz
-    cross_z = ax * by - ay * bx
-    return 0.5 * math.sqrt(
-        cross_x * cross_x
-        + cross_y * cross_y
-        + cross_z * cross_z
-    )
-
-
-def color_distance(
-    color1: tuple[float, float, float],
-    color2: tuple[float, float, float],
-) -> float:
-    return math.sqrt(sum(
-        (color1[channel] - color2[channel]) ** 2
-        for channel in range(3)
-    ))
-
-
-def select_lo_palette(
-    points: list[tuple[float, float, float]],
-    indices: list[int],
-    triangle_colors: list[tuple[float, float, float]],
+def measured_envelope_attrs(
+    minimum: tuple[float, float, float],
+    maximum: tuple[float, float, float],
     *,
-    similar_color_distance: float = 0.08,
-    dominant_ratio: float = 0.90,
-    minimum_color_ratio: float = 0.05,
-) -> LoPalette:
-    """Select up to three major colors using true triangle surface area."""
-    if len(triangle_colors) != len(indices) // 3:
-        raise ValueError("三角形数と色ラベル数が一致しません")
+    component_type: str,
+    rod: bool,
+    optics_attrs: dict[str, Any],
+) -> dict[str, Any]:
+    """Dimensions measured from the model's oriented envelope.
 
-    raw_areas: dict[tuple[float, float, float], float] = {}
-    for triangle_index, color in enumerate(triangle_colors):
-        offset = triangle_index * 3
-        area = triangle_area(
-            points[indices[offset]],
-            points[indices[offset + 1]],
-            points[indices[offset + 2]],
+    The beam tracer reads these for a part's apertures and depth (centerX_mm,
+    sizeX_mm, diameter_mm, thickness_mm, bodySizeX_mm, panelX_mm, ...), and the
+    viewport for the placement ghost. Values the caller already authored (an
+    --attr, a per-model default) win: only missing keys are returned.
+    """
+    size = tuple(maximum[axis] - minimum[axis] for axis in range(3))
+    center = tuple((maximum[axis] + minimum[axis]) / 2.0 for axis in range(3))
+    measured: dict[str, Any] = {
+        "centerX_mm": center[0],
+        "centerY_mm": center[1],
+        "centerZ_mm": center[2],
+        "sizeX_mm": size[0],
+        "sizeY_mm": size[1],
+        "sizeZ_mm": size[2],
+    }
+    kind = component_type.lower()
+    if rod:
+        measured.update({
+            "length_mm": size[0],
+            "diameterY_mm": size[1],
+            "diameterZ_mm": size[2],
+        })
+    elif kind in ("lens", "polarizer"):
+        measured.update({
+            "diameter_mm": max(size[1], size[2]),
+            "thickness_mm": size[0],
+        })
+    elif kind == "iris":
+        measured.update({
+            "outerDiameter_mm": min(size[1], size[2]),
+            "thickness_mm": size[0],
+        })
+    elif kind == "laser":
+        # The housing ends where the output barrel starts: at the measured
+        # emission head when the laser has one, else a short default barrel.
+        front = optics_attrs.get("emissionFrontX_mm")
+        head = optics_attrs.get("emissionHeadLength_mm")
+        diameter = optics_attrs.get("emissionDiameter_mm")
+        measured_output = None not in (front, head, diameter)
+        output_length = (
+            float(head) if measured_output
+            else min(max(size[0] * 0.1, 4.0), size[0] * 0.25)
         )
-        raw_areas[color] = raw_areas.get(color, 0.0) + area
-
-    # Merge insignificant RGB variations before counting authored colors.
-    clusters = []
-    raw_to_cluster = {}
-    for color, area in sorted(
-        raw_areas.items(),
-        key=lambda item: item[1],
-        reverse=True,
-    ):
-        nearest_index = None
-        nearest_distance = float("inf")
-        for index, cluster in enumerate(clusters):
-            distance = color_distance(color, cluster["color"])
-            if distance < nearest_distance:
-                nearest_index = index
-                nearest_distance = distance
-        if (
-            nearest_index is None
-            or nearest_distance > similar_color_distance
-        ):
-            clusters.append({
-                "color": color,
-                "weighted": [
-                    color[channel] * area
-                    for channel in range(3)
-                ],
-                "area": area,
-                "raw_colors": [color],
-            })
-            raw_to_cluster[color] = len(clusters) - 1
-        else:
-            cluster = clusters[nearest_index]
-            cluster["area"] += area
-            for channel in range(3):
-                cluster["weighted"][channel] += color[channel] * area
-            cluster["color"] = tuple(
-                cluster["weighted"][channel] / cluster["area"]
-                for channel in range(3)
-            )
-            cluster["raw_colors"].append(color)
-            raw_to_cluster[color] = nearest_index
-
-    clusters.sort(key=lambda cluster: cluster["area"], reverse=True)
-    raw_to_cluster = {
-        raw_color: index
-        for index, cluster in enumerate(clusters)
-        for raw_color in cluster["raw_colors"]
-    }
-    total_area = sum(cluster["area"] for cluster in clusters)
-    if total_area <= 0.0:
-        total_area = float(sum(len(part["raw_colors"]) for part in clusters))
-        for cluster in clusters:
-            cluster["area"] = float(len(cluster["raw_colors"]))
-
-    source_color_count = len(clusters)
-    if source_color_count <= 5:
-        maximum_colors = 1
-    elif source_color_count <= 14:
-        maximum_colors = 2
-    else:
-        maximum_colors = 3
-
-    ratios = [cluster["area"] / total_area for cluster in clusters]
-    if ratios and ratios[0] >= dominant_ratio:
-        maximum_colors = 1
-
-    selected_indices = [0]
-    for index in range(1, min(maximum_colors, len(clusters))):
-        if ratios[index] >= minimum_color_ratio:
-            selected_indices.append(index)
-
-    selected_colors = [
-        tuple(clusters[index]["color"])
-        for index in selected_indices
-    ]
-    selected_lookup = {
-        cluster_index: selected_colors[selected_index]
-        for selected_index, cluster_index in enumerate(selected_indices)
-    }
-    dominant_color = selected_colors[0]
-    mapping = {
-        raw_color: selected_lookup.get(cluster_index, dominant_color)
-        for raw_color, cluster_index in raw_to_cluster.items()
-    }
-    return LoPalette(
-        selected_colors=selected_colors,
-        color_mapping=mapping,
-        area_ratios=[ratios[index] for index in selected_indices],
-        source_color_count=source_color_count,
-    )
-
-
-def split_mesh_by_palette(
-    points: list[tuple[float, float, float]],
-    indices: list[int],
-    triangle_colors: list[tuple[float, float, float]],
-    palette: LoPalette,
-) -> list[MeshPart]:
-    """Split one simplified mesh into at most three compact colored meshes."""
-    grouped_triangles: dict[tuple[float, float, float], list[tuple[int, int, int]]] = {
-        color: []
-        for color in palette.selected_colors
-    }
-    for triangle_index, source_color in enumerate(triangle_colors):
-        offset = triangle_index * 3
-        color = palette.color_mapping[source_color]
-        grouped_triangles[color].append((
-            indices[offset],
-            indices[offset + 1],
-            indices[offset + 2],
+        output_front = float(front) if measured_output else maximum[0]
+        measured.update({
+            "bodySizeX_mm": max(
+                output_front - output_length - minimum[0], size[0] * 0.5
+            ),
+            "outputDiameter_mm": (
+                float(diameter) if measured_output
+                else min(size[1], size[2]) * 0.26
+            ),
+            "outputLength_mm": output_length,
+        })
+    elif kind == "slm":
+        # The local origin is the active screen; the housing starts right
+        # behind it.
+        panel_thickness = float(optics_attrs.get(
+            "screenThickness_mm", min(max(size[0] * 0.005, 0.2), 1.0)
         ))
-
-    parts = []
-    for color in palette.selected_colors:
-        triangles = grouped_triangles[color]
-        if not triangles:
-            continue
-        old_to_new = {}
-        part_points = []
-        part_indices = []
-        for triangle in triangles:
-            for old_index in triangle:
-                if old_index not in old_to_new:
-                    old_to_new[old_index] = len(part_points)
-                    part_points.append(points[old_index])
-                part_indices.append(old_to_new[old_index])
-        parts.append(MeshPart(part_points, part_indices, color))
-    return parts
+        body_min_x = panel_thickness / 2.0
+        if maximum[0] <= body_min_x:
+            body_min_x = minimum[0]
+        measured.update({
+            "bodyCenterX_mm": (body_min_x + maximum[0]) / 2.0,
+            "bodySizeX_mm": maximum[0] - body_min_x,
+            "panelX_mm": 0.0,
+            "panelY_mm": 0.0,
+            "panelZ_mm": 0.0,
+            "panelThickness_mm": panel_thickness,
+        })
+    return {key: value for key, value in measured.items() if key not in optics_attrs}
 
 
 def oriented_bounds(
@@ -1294,536 +1143,6 @@ def oriented_bounds(
     minimum = tuple(min(point[axis] for point in oriented) for axis in range(3))
     maximum = tuple(max(point[axis] for point in oriented) for axis in range(3))
     return minimum, maximum
-
-
-def make_box_proxy(
-    minimum: tuple[float, float, float],
-    maximum: tuple[float, float, float],
-) -> tuple[list[tuple[float, float, float]], list[int]]:
-    """Create a 12-triangle box with exactly the requested bounds."""
-    x0, y0, z0 = minimum
-    x1, y1, z1 = maximum
-    points = [
-        (x0, y0, z0),
-        (x1, y0, z0),
-        (x1, y1, z0),
-        (x0, y1, z0),
-        (x0, y0, z1),
-        (x1, y0, z1),
-        (x1, y1, z1),
-        (x0, y1, z1),
-    ]
-    indices = [
-        0, 2, 1, 0, 3, 2,
-        4, 5, 6, 4, 6, 7,
-        0, 1, 5, 0, 5, 4,
-        1, 2, 6, 1, 6, 5,
-        2, 3, 7, 2, 7, 6,
-        3, 0, 4, 3, 4, 7,
-    ]
-    return points, indices
-
-
-def make_convex_hull_proxy(
-    points: list[tuple[float, float, float]],
-) -> tuple[list[tuple[float, float, float]], list[int]]:
-    """Connect the outermost CAD vertices into a compact convex surface."""
-    unique_points = list(dict.fromkeys(
-        tuple(round(value, 9) for value in point)
-        for point in points
-    ))
-    if len(unique_points) < 4:
-        raise ValueError("凸包の生成には4点以上の頂点が必要です")
-    try:
-        hull = ConvexHull(unique_points)
-    except QhullError as exc:
-        raise ValueError("CAD頂点から3次元の凸包を生成できませんでした") from exc
-
-    used_indices = sorted({
-        int(index)
-        for triangle in hull.simplices
-        for index in triangle
-    })
-    old_to_new = {
-        old_index: new_index
-        for new_index, old_index in enumerate(used_indices)
-    }
-    hull_points = [unique_points[index] for index in used_indices]
-    centroid = tuple(
-        sum(point[axis] for point in hull_points) / len(hull_points)
-        for axis in range(3)
-    )
-    indices = []
-    for simplex in hull.simplices:
-        triangle = [int(index) for index in simplex]
-        a, b, c = (unique_points[index] for index in triangle)
-        ab = tuple(b[axis] - a[axis] for axis in range(3))
-        ac = tuple(c[axis] - a[axis] for axis in range(3))
-        normal = (
-            ab[1] * ac[2] - ab[2] * ac[1],
-            ab[2] * ac[0] - ab[0] * ac[2],
-            ab[0] * ac[1] - ab[1] * ac[0],
-        )
-        face_center = tuple(
-            (a[axis] + b[axis] + c[axis]) / 3.0
-            for axis in range(3)
-        )
-        outward = tuple(
-            face_center[axis] - centroid[axis]
-            for axis in range(3)
-        )
-        if sum(normal[axis] * outward[axis] for axis in range(3)) < 0.0:
-            triangle[1], triangle[2] = triangle[2], triangle[1]
-        indices.extend(old_to_new[index] for index in triangle)
-    return hull_points, indices
-
-
-def make_convex_hull_ring_proxy(
-    points: list[tuple[float, float, float]],
-    aperture_mm: float,
-    hole_center_yz: tuple[float, float] = (0.0, 0.0),
-) -> tuple[list[tuple[float, float, float]], list[int]]:
-    """Extrude the outer YZ convex hull while keeping a circular through-hole."""
-    minimum, maximum = oriented_bounds(points, "+X")
-    yz_points = list(dict.fromkeys(
-        (round(point[1], 9), round(point[2], 9))
-        for point in points
-    ))
-    try:
-        profile_hull = ConvexHull(yz_points)
-    except QhullError as exc:
-        raise ValueError("絞りの外周凸包を生成できませんでした") from exc
-
-    outer_profile = [
-        yz_points[int(index)]
-        for index in profile_hull.vertices
-    ]
-    cy, cz = hole_center_yz
-    aperture_radius = aperture_mm / 2.0
-    if aperture_radius <= 0.0:
-        raise ValueError("絞り穴の直径は0より大きくしてください")
-    closest_outer_radius = min(
-        math.hypot(y - cy, z - cz)
-        for y, z in outer_profile
-    )
-    if aperture_radius >= closest_outer_radius:
-        raise ValueError("絞り穴が外周凸包より大きすぎます")
-
-    inner_profile = []
-    for y, z in outer_profile:
-        angle = math.atan2(z - cz, y - cy)
-        inner_profile.append((
-            cy + aperture_radius * math.cos(angle),
-            cz + aperture_radius * math.sin(angle),
-        ))
-
-    x0, x1 = minimum[0], maximum[0]
-    count = len(outer_profile)
-    ring_points = []
-    for x in (x0, x1):
-        ring_points.extend((x, y, z) for y, z in outer_profile)
-    for x in (x0, x1):
-        ring_points.extend((x, y, z) for y, z in inner_profile)
-
-    outer_front = 0
-    outer_back = count
-    inner_front = count * 2
-    inner_back = count * 3
-    indices = []
-    for index in range(count):
-        following = (index + 1) % count
-        of0, of1 = outer_front + index, outer_front + following
-        ob0, ob1 = outer_back + index, outer_back + following
-        inf0, inf1 = inner_front + index, inner_front + following
-        inb0, inb1 = inner_back + index, inner_back + following
-        indices.extend([
-            # Outer wall.
-            of0, ob0, ob1,
-            of0, ob1, of1,
-            # Front annulus.
-            of0, of1, inf1,
-            of0, inf1, inf0,
-            # Back annulus.
-            ob0, inb1, ob1,
-            ob0, inb0, inb1,
-            # Inner wall, wound toward the opening.
-            inf0, inb1, inb0,
-            inf0, inf1, inb1,
-        ])
-    return ring_points, indices
-
-
-def make_cylinder_proxy(
-    minimum: tuple[float, float, float],
-    maximum: tuple[float, float, float],
-    segments: int,
-    aperture_mm: float | None = None,
-) -> tuple[list[tuple[float, float, float]], list[int]]:
-    """Create an X-axis elliptical cylinder or iris ring with exact bounds."""
-    x0, y0, z0 = minimum
-    x1, y1, z1 = maximum
-    cy = (y0 + y1) / 2.0
-    cz = (z0 + z1) / 2.0
-    ry = (y1 - y0) / 2.0
-    rz = (z1 - z0) / 2.0
-    ring = aperture_mm is not None and aperture_mm > 0.0
-
-    points: list[tuple[float, float, float]] = []
-    for x in (x0, x1):
-        for index in range(segments):
-            angle = 2.0 * math.pi * index / segments
-            points.append((
-                x,
-                cy + ry * math.cos(angle),
-                cz + rz * math.sin(angle),
-            ))
-
-    inner_offset = len(points)
-    if ring:
-        inner_radius = min(aperture_mm / 2.0, ry * 0.95, rz * 0.95)
-        for x in (x0, x1):
-            for index in range(segments):
-                angle = 2.0 * math.pi * index / segments
-                points.append((
-                    x,
-                    cy + inner_radius * math.cos(angle),
-                    cz + inner_radius * math.sin(angle),
-                ))
-    else:
-        points.extend([(x0, cy, cz), (x1, cy, cz)])
-
-    indices: list[int] = []
-    for index in range(segments):
-        following = (index + 1) % segments
-        front = index
-        front_next = following
-        back = segments + index
-        back_next = segments + following
-
-        # Outer wall.
-        indices.extend([
-            front, back_next, back,
-            front, front_next, back_next,
-        ])
-
-        if ring:
-            inner_front = inner_offset + index
-            inner_front_next = inner_offset + following
-            inner_back = inner_offset + segments + index
-            inner_back_next = inner_offset + segments + following
-            # Front and back annular faces plus the inner wall.
-            indices.extend([
-                front, inner_front_next, front_next,
-                front, inner_front, inner_front_next,
-                back, back_next, inner_back_next,
-                back, inner_back_next, inner_back,
-                inner_front, inner_back, inner_back_next,
-                inner_front, inner_back_next, inner_front_next,
-            ])
-        else:
-            front_center = 2 * segments
-            back_center = front_center + 1
-            indices.extend([
-                front_center, front_next, front,
-                back_center, back, back_next,
-            ])
-
-    return points, indices
-
-
-def cluster_mesh(
-    points: list[tuple[float, float, float]],
-    indices: list[int],
-    triangle_colors: list[tuple[float, float, float]],
-    resolution: int,
-) -> tuple[
-    list[tuple[float, float, float]],
-    list[int],
-    list[tuple[float, float, float]],
-]:
-    """Simplify a triangle mesh by merging vertices into a regular 3D grid."""
-    minimum = tuple(min(point[axis] for point in points) for axis in range(3))
-    maximum = tuple(max(point[axis] for point in points) for axis in range(3))
-    size = tuple(maximum[axis] - minimum[axis] for axis in range(3))
-
-    clusters: dict[tuple[int, int, int], list[float]] = {}
-    point_keys = []
-    for point in points:
-        key = tuple(
-            min(
-                resolution,
-                int(
-                    (point[axis] - minimum[axis])
-                    / size[axis]
-                    * resolution
-                ),
-            )
-            if size[axis] > 0.0
-            else 0
-            for axis in range(3)
-        )
-        point_keys.append(key)
-        aggregate = clusters.setdefault(key, [0.0, 0.0, 0.0, 0.0])
-        aggregate[0] += point[0]
-        aggregate[1] += point[1]
-        aggregate[2] += point[2]
-        aggregate[3] += 1.0
-
-    key_to_index = {}
-    simplified_points = []
-    for key, aggregate in clusters.items():
-        key_to_index[key] = len(simplified_points)
-        count = aggregate[3]
-        simplified_points.append((
-            aggregate[0] / count,
-            aggregate[1] / count,
-            aggregate[2] / count,
-        ))
-
-    remap = [key_to_index[key] for key in point_keys]
-    simplified_indices = []
-    simplified_colors = []
-    seen_triangles = set()
-    for triangle_index, offset in enumerate(range(0, len(indices), 3)):
-        triangle = (
-            remap[indices[offset]],
-            remap[indices[offset + 1]],
-            remap[indices[offset + 2]],
-        )
-        if len(set(triangle)) < 3:
-            continue
-        identity = tuple(sorted(triangle))
-        if identity in seen_triangles:
-            continue
-        seen_triangles.add(identity)
-        simplified_indices.extend(triangle)
-        simplified_colors.append(triangle_colors[triangle_index])
-
-    if not simplified_indices:
-        raise RuntimeError("loメッシュの簡略化結果が空になりました")
-
-    # Drop clusters no surviving triangle references. Bounds must be matched
-    # using only vertices that will actually be authored to the USD meshes.
-    old_to_new = {}
-    compact_points = []
-    compact_indices = []
-    for old_index in simplified_indices:
-        if old_index not in old_to_new:
-            old_to_new[old_index] = len(compact_points)
-            compact_points.append(simplified_points[old_index])
-        compact_indices.append(old_to_new[old_index])
-    return compact_points, compact_indices, simplified_colors
-
-
-def match_bounds(
-    points: list[tuple[float, float, float]],
-    target_minimum: tuple[float, float, float],
-    target_maximum: tuple[float, float, float],
-) -> list[tuple[float, float, float]]:
-    """Scale and translate a simplified mesh back onto the hi mesh bounds."""
-    minimum = tuple(min(point[axis] for point in points) for axis in range(3))
-    maximum = tuple(max(point[axis] for point in points) for axis in range(3))
-    result = []
-    for point in points:
-        matched = []
-        for axis in range(3):
-            source_size = maximum[axis] - minimum[axis]
-            target_size = target_maximum[axis] - target_minimum[axis]
-            if source_size > 0.0:
-                value = (
-                    (point[axis] - minimum[axis])
-                    / source_size
-                    * target_size
-                    + target_minimum[axis]
-                )
-            else:
-                value = (target_minimum[axis] + target_maximum[axis]) / 2.0
-            matched.append(value)
-        result.append(tuple(matched))
-    return result
-
-
-def simplify_surface_mesh(
-    points: list[tuple[float, float, float]],
-    indices: list[int],
-    triangle_colors: list[tuple[float, float, float]],
-    target_triangles: int,
-) -> tuple[
-    list[tuple[float, float, float]],
-    list[int],
-    list[tuple[float, float, float]],
-]:
-    """Preserve a small hi mesh or adaptively cluster a large one."""
-    if len(indices) // 3 <= target_triangles:
-        return points, indices, triangle_colors
-
-    target_minimum = tuple(
-        min(point[axis] for point in points)
-        for axis in range(3)
-    )
-    target_maximum = tuple(
-        max(point[axis] for point in points)
-        for axis in range(3)
-    )
-    best = None
-    low = 2
-    high = 128
-    while low <= high:
-        resolution = (low + high) // 2
-        candidate = cluster_mesh(
-            points,
-            indices,
-            triangle_colors,
-            resolution,
-        )
-        triangle_count = len(candidate[1]) // 3
-        if triangle_count <= target_triangles:
-            best = candidate
-            low = resolution + 1
-        else:
-            high = resolution - 1
-
-    if best is None:
-        best = cluster_mesh(points, indices, triangle_colors, 2)
-    simplified_points, simplified_indices, simplified_colors = best
-    return (
-        match_bounds(simplified_points, target_minimum, target_maximum),
-        simplified_indices,
-        simplified_colors,
-    )
-
-
-def mesh_surface_area(
-    points: list[tuple[float, float, float]],
-    indices: list[int],
-) -> float:
-    return sum(
-        triangle_area(
-            points[indices[offset]],
-            points[indices[offset + 1]],
-            points[indices[offset + 2]],
-        )
-        for offset in range(0, len(indices), 3)
-    )
-
-
-def simplify_surface_regions(
-    regions: list[SourceRegion],
-    source_forward_axis: str,
-    target_triangles: int,
-    source_origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    source_roll_deg: float = 0.0,
-) -> tuple[
-    list[tuple[float, float, float]],
-    list[int],
-    list[tuple[float, float, float]],
-]:
-    """Distribute the polygon budget so major separate shapes stay recognizable."""
-    oriented_regions = [
-        SourceRegion(
-            [
-                orient_point(
-                    point,
-                    source_forward_axis,
-                    source_origin,
-                    source_roll_deg,
-                )
-                for point in region.points
-            ],
-            region.indices,
-            region.triangle_colors,
-        )
-        for region in regions
-    ]
-    areas = [
-        mesh_surface_area(region.points, region.indices)
-        for region in oriented_regions
-    ]
-    # Square-root weighting gives a lens barrel, display panel, or connector
-    # more representation than pure area-proportional allocation would.
-    weights = [math.sqrt(max(area, 1e-12)) for area in areas]
-    total_weight = sum(weights)
-
-    simplified_regions = []
-    for region, weight in zip(oriented_regions, weights):
-        original_triangles = len(region.indices) // 3
-        budget = max(
-            12,
-            round(target_triangles * weight / total_weight),
-        )
-        budget = min(original_triangles, budget)
-        points, indices, colors = simplify_surface_mesh(
-            region.points,
-            region.indices,
-            region.triangle_colors,
-            budget,
-        )
-        simplified_regions.append(SourceRegion(points, indices, colors))
-    return combine_source_regions(simplified_regions)
-
-
-def lo_proxy_kind(component_type: str, requested: str) -> str:
-    """Resolve the automatic proxy primitive for one component type."""
-    if requested != "auto":
-        return requested
-    # Mounts need to keep their holes, knobs, and base profile in the low LOD;
-    # a single bounds primitive no longer resembles the usable hardware.
-    if component_type.lower() == "mount":
-        return "mesh"
-    return "primitive"
-
-
-def set_gprim_appearance(
-    gprim,
-    color: tuple[float, float, float],
-    opacity: float,
-    *,
-    double_sided: bool = False,
-) -> None:
-    """Author the lightweight viewport appearance shared by analytic prims."""
-    gprim.CreateDisplayColorAttr([Gf.Vec3f(*color)])
-    gprim.CreateDisplayOpacityAttr([opacity])
-    if double_sided:
-        gprim.CreateDoubleSidedAttr(True)
-
-
-def analyze_lens_profile(
-    oriented_points: list[tuple[float, float, float]],
-) -> LensProfile:
-    """Classify an X-axis lens from the radial extent at both X endpoints."""
-    minimum, maximum = oriented_bounds(oriented_points, "+X")
-    center_y = (minimum[1] + maximum[1]) / 2.0
-    center_z = (minimum[2] + maximum[2]) / 2.0
-    radius_y = max((maximum[1] - minimum[1]) / 2.0, 1e-9)
-    radius_z = max((maximum[2] - minimum[2]) / 2.0, 1e-9)
-    tolerance = max((maximum[0] - minimum[0]) * 0.01, 1e-4)
-
-    def endpoint_is_flat(side: str) -> bool:
-        endpoint_points = [
-            point
-            for point in oriented_points
-            if (
-                point[0] <= minimum[0] + tolerance
-                if side == "min"
-                else point[0] >= maximum[0] - tolerance
-            )
-        ]
-        if len(endpoint_points) < 3:
-            return False
-        radial_extent = max(
-            ((point[1] - center_y) / radius_y) ** 2
-            + ((point[2] - center_z) / radius_z) ** 2
-            for point in endpoint_points
-        )
-        return radial_extent >= 0.8
-
-    min_flat = endpoint_is_flat("min")
-    max_flat = endpoint_is_flat("max")
-    if min_flat != max_flat:
-        return LensProfile("planoConvex", "min" if min_flat else "max")
-    if not min_flat and not max_flat:
-        return LensProfile("biconvex", None)
-    return LensProfile("plano", "both")
 
 
 def analyze_cylindrical_laser_emission(
@@ -1918,17 +1237,6 @@ def analyze_cylindrical_laser_emission(
     )
 
 
-def add_primitive_transform(
-    gprim,
-    translate: tuple[float, float, float],
-    scale: tuple[float, float, float] | None = None,
-) -> None:
-    xformable = UsdGeom.Xformable(gprim.GetPrim())
-    xformable.AddTranslateOp().Set(Gf.Vec3d(*translate))
-    if scale is not None:
-        xformable.AddScaleOp().Set(Gf.Vec3d(*scale))
-
-
 def add_zero_xyz_rotation(
     xformable: UsdGeom.Xformable,
     *,
@@ -2018,634 +1326,6 @@ def configure_generated_asset(
                 local_maximum[index] - local_minimum[index],
             )
     stage.GetRootLayer().Save()
-
-
-def write_lo_primitives(
-    oriented_points: list[tuple[float, float, float]],
-    output_path: Path,
-    *,
-    component_type: str,
-    root_prim_name: str,
-    optics_attrs: dict[str, Any],
-    display_color: tuple[float, float, float],
-    display_opacity: float,
-) -> None:
-    """Write a non-Mesh lo model from USD analytic primitives."""
-    minimum, maximum = oriented_bounds(oriented_points, "+X")
-    size = tuple(maximum[axis] - minimum[axis] for axis in range(3))
-    center = tuple(
-        (maximum[axis] + minimum[axis]) / 2.0
-        for axis in range(3)
-    )
-    primitive_attrs = dict(optics_attrs)
-    if (
-        component_type.lower() == "mount"
-        and primitive_attrs.get("loShape") == "cross"
-    ):
-        # The lightweight LCP6X cross is a flat viewport proxy, not a polished
-        # metal representation. Keep its STEP-derived color without inheriting
-        # the default Mount metallic material.
-        primitive_attrs.pop("metalness", None)
-        primitive_attrs.pop("roughness", None)
-    primitive_attrs.update({
-        "centerX_mm": center[0],
-        "centerY_mm": center[1],
-        "centerZ_mm": center[2],
-        "sizeX_mm": size[0],
-        "sizeY_mm": size[1],
-        "sizeZ_mm": size[2],
-    })
-
-    output_path = output_path.resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    stage = Usd.Stage.CreateNew(str(output_path))
-    if stage is None:
-        raise RuntimeError(
-            f"USD Stageを作成できませんでした: {output_path}"
-        )
-    UsdGeom.SetStageMetersPerUnit(stage, 0.001)
-    UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
-    root_prim_name = usd_identifier(root_prim_name)
-    root_prim = UsdGeom.Xform.Define(stage, f"/{root_prim_name}")
-    stage.SetDefaultPrim(root_prim.GetPrim())
-    add_zero_xyz_rotation(
-        UsdGeom.Xformable(root_prim.GetPrim()),
-        rotate_x_deg=(
-            0.0 if component_type.lower() == "post" else 90.0
-        ),
-        rotate_y_deg=(
-            -90.0
-            if component_type.lower() in {"holder", "post"}
-            else 0.0
-        ),
-    )
-    root = root_prim.GetPrim()
-    root.CreateAttribute("optics:type", Sdf.ValueTypeNames.Token).Set(
-        "mount"
-        if is_rod_component(component_type, root_prim_name)
-        else component_type
-    )
-
-    component_kind = component_type.lower()
-    if is_rod_component(component_type, root_prim_name):
-        radius_y = size[1] / 2.0
-        radius_z = size[2] / 2.0
-        radius = max(radius_y, radius_z)
-        body = UsdGeom.Cylinder.Define(
-            stage, f"/{root_prim_name}/Body"
-        )
-        body.CreateAxisAttr(UsdGeom.Tokens.x)
-        body.CreateRadiusAttr(radius)
-        body.CreateHeightAttr(size[0])
-        add_primitive_transform(
-            body,
-            center,
-            (
-                1.0,
-                radius_y / max(radius, 1e-9),
-                radius_z / max(radius, 1e-9),
-            ),
-        )
-        set_gprim_appearance(body, display_color, display_opacity)
-        primitive_attrs.update({
-            "length_mm": size[0],
-            "diameterY_mm": size[1],
-            "diameterZ_mm": size[2],
-        })
-        primitive_attrs.setdefault("rodEndMinX_mm", minimum[0])
-        primitive_attrs.setdefault("rodEndMaxX_mm", maximum[0])
-    elif component_kind == "lens":
-        radius_y = size[1] / 2.0
-        radius_z = size[2] / 2.0
-        radius = max(radius_y, radius_z)
-        profile = analyze_lens_profile(oriented_points)
-        requested_shape = str(optics_attrs.get("lensShape", "")).lower()
-        if requested_shape in {"biconvex", "plano-convex", "planoconvex"}:
-            profile = LensProfile(
-                "biconvex"
-                if requested_shape == "biconvex"
-                else "planoConvex",
-                profile.flat_side,
-            )
-
-        if profile.kind == "biconvex":
-            convex = UsdGeom.Sphere.Define(
-                stage, f"/{root_prim_name}/RugbyBall"
-            )
-            convex.CreateRadiusAttr(1.0)
-            convex.GetPrim().CreateAttribute(
-                "optics:spherePortion", Sdf.ValueTypeNames.Token
-            ).Set("full")
-            add_primitive_transform(
-                convex,
-                center,
-                (size[0] / 2.0, radius_y, radius_z),
-            )
-            set_gprim_appearance(
-                convex,
-                display_color,
-                display_opacity,
-                double_sided=True,
-            )
-            primitive_attrs.update({
-                "lensShape": "biconvex",
-                "diameter_mm": max(size[1], size[2]),
-                "thickness_mm": size[0],
-            })
-        elif profile.kind == "planoConvex":
-            radial_edge_points = [
-                point
-                for point in oriented_points
-                if math.sqrt(
-                    (
-                        (point[1] - center[1])
-                        / max(radius_y, 1e-9)
-                    ) ** 2
-                    + (
-                        (point[2] - center[2])
-                        / max(radius_z, 1e-9)
-                    ) ** 2
-                ) >= 0.97
-            ]
-            flat_side = profile.flat_side or "min"
-            flat_x = minimum[0] if flat_side == "min" else maximum[0]
-            if flat_side == "min":
-                edge_x = max(
-                    (point[0] for point in radial_edge_points),
-                    default=center[0],
-                )
-                edge_x = min(max(edge_x, minimum[0]), maximum[0])
-                sphere_portion = "positiveX"
-                curved_tip_x = maximum[0]
-            else:
-                edge_x = min(
-                    (point[0] for point in radial_edge_points),
-                    default=center[0],
-                )
-                edge_x = min(max(edge_x, minimum[0]), maximum[0])
-                sphere_portion = "negativeX"
-                curved_tip_x = minimum[0]
-            edge_thickness = min(abs(edge_x - flat_x), size[0])
-            edge_thickness = max(edge_thickness, size[0] * 0.01)
-            sag = max(abs(curved_tip_x - edge_x), size[0] * 0.01)
-
-            body = UsdGeom.Cylinder.Define(
-                stage, f"/{root_prim_name}/EdgeThickness"
-            )
-            body.CreateAxisAttr(UsdGeom.Tokens.x)
-            body.CreateRadiusAttr(radius)
-            body.CreateHeightAttr(edge_thickness)
-            body.GetPrim().CreateAttribute(
-                "optics:capSide", Sdf.ValueTypeNames.Token
-            ).Set("negativeX" if flat_side == "min" else "positiveX")
-            add_primitive_transform(
-                body,
-                (
-                    (flat_x + edge_x) / 2.0,
-                    center[1],
-                    center[2],
-                ),
-                (
-                    1.0,
-                    radius_y / max(radius, 1e-9),
-                    radius_z / max(radius, 1e-9),
-                ),
-            )
-            set_gprim_appearance(
-                body,
-                display_color,
-                display_opacity,
-                double_sided=True,
-            )
-
-            convex = UsdGeom.Sphere.Define(
-                stage, f"/{root_prim_name}/RugbyBallHalf"
-            )
-            convex.CreateRadiusAttr(1.0)
-            convex.GetPrim().CreateAttribute(
-                "optics:spherePortion", Sdf.ValueTypeNames.Token
-            ).Set(sphere_portion)
-            convex.CreateExtentAttr([
-                Gf.Vec3f(0.0, -1.0, -1.0),
-                Gf.Vec3f(1.0, 1.0, 1.0),
-            ] if sphere_portion == "positiveX" else [
-                Gf.Vec3f(-1.0, -1.0, -1.0),
-                Gf.Vec3f(0.0, 1.0, 1.0),
-            ])
-            add_primitive_transform(
-                convex,
-                (edge_x, center[1], center[2]),
-                (sag, radius_y, radius_z),
-            )
-            set_gprim_appearance(
-                convex,
-                display_color,
-                display_opacity,
-                double_sided=True,
-            )
-            primitive_attrs.update({
-                "lensShape": "planoConvex",
-                "flatSide": flat_side,
-                "diameter_mm": max(size[1], size[2]),
-                "thickness_mm": size[0],
-                "edgeThickness_mm": edge_thickness,
-                "convexSag_mm": sag,
-                "convexBaseX_mm": edge_x,
-            })
-        else:
-            body = UsdGeom.Cylinder.Define(
-                stage, f"/{root_prim_name}/LensDisc"
-            )
-            body.CreateAxisAttr(UsdGeom.Tokens.x)
-            body.CreateRadiusAttr(radius)
-            body.CreateHeightAttr(size[0])
-            add_primitive_transform(
-                body,
-                center,
-                (
-                    1.0,
-                    radius_y / max(radius, 1e-9),
-                    radius_z / max(radius, 1e-9),
-                ),
-            )
-            set_gprim_appearance(
-                body,
-                display_color,
-                display_opacity,
-                double_sided=True,
-            )
-            primitive_attrs.update({
-                "lensShape": "plano",
-                "diameter_mm": max(size[1], size[2]),
-                "thickness_mm": size[0],
-            })
-    elif component_kind == "polarizer":
-        # A polarizer is represented by a transparent analytic disc.  Using
-        # the same measured X thickness and Y/Z radii as hi keeps LOD
-        # switching spatially stable without retaining the CAD mesh.
-        radius_y = size[1] / 2.0
-        radius_z = size[2] / 2.0
-        radius = max(radius_y, radius_z)
-        disc = UsdGeom.Cylinder.Define(
-            stage, f"/{root_prim_name}/PolarizerDisc"
-        )
-        disc.CreateAxisAttr(UsdGeom.Tokens.x)
-        disc.CreateRadiusAttr(radius)
-        disc.CreateHeightAttr(size[0])
-        add_primitive_transform(
-            disc,
-            center,
-            (
-                1.0,
-                radius_y / max(radius, 1e-9),
-                radius_z / max(radius, 1e-9),
-            ),
-        )
-        set_gprim_appearance(disc, display_color, display_opacity)
-        primitive_attrs.update({
-            "diameter_mm": max(size[1], size[2]),
-            "thickness_mm": size[0],
-        })
-    elif component_kind == "laser":
-        # Keep a large laser system recognizable without carrying its screws,
-        # lettering, electronics, and connector meshes into lo.  The housing
-        # and output barrel share the measured envelope, so changing LOD does
-        # not move or resize the component.
-        measured_front = optics_attrs.get("emissionFrontX_mm")
-        measured_length = optics_attrs.get("emissionHeadLength_mm")
-        measured_diameter = optics_attrs.get("emissionDiameter_mm")
-        measured_center_y = float(
-            optics_attrs.get("emissionCenterY_mm", 0.0)
-        )
-        measured_center_z = float(
-            optics_attrs.get("emissionCenterZ_mm", 0.0)
-        )
-        has_measured_output = (
-            measured_front is not None
-            and measured_length is not None
-            and measured_diameter is not None
-        )
-        output_length = (
-            float(measured_length)
-            if has_measured_output
-            else min(max(size[0] * 0.1, 4.0), size[0] * 0.25)
-        )
-        output_front_x = (
-            float(measured_front)
-            if has_measured_output
-            else maximum[0]
-        )
-        body_min_x = minimum[0]
-        body_max_x = output_front_x - output_length
-        body_size_x = max(body_max_x - body_min_x, size[0] * 0.5)
-        body_center_x = (body_min_x + body_max_x) / 2.0
-
-        body = UsdGeom.Cube.Define(stage, f"/{root_prim_name}/Housing")
-        body.CreateSizeAttr(1.0)
-        add_primitive_transform(
-            body,
-            (body_center_x, center[1], center[2]),
-            (body_size_x, size[1], size[2]),
-        )
-        set_gprim_appearance(body, display_color, 1.0)
-
-        output_radius = (
-            float(measured_diameter) / 2.0
-            if has_measured_output
-            else min(size[1], size[2]) * 0.13
-        )
-        output = UsdGeom.Cylinder.Define(
-            stage, f"/{root_prim_name}/Output"
-        )
-        output.CreateAxisAttr(UsdGeom.Tokens.x)
-        output.CreateRadiusAttr(output_radius)
-        output.CreateHeightAttr(output_length)
-        add_primitive_transform(
-            output,
-            (
-                output_front_x - output_length / 2.0,
-                measured_center_y,
-                measured_center_z,
-            ),
-        )
-        set_gprim_appearance(output, (0.05, 0.05, 0.05), 1.0)
-        primitive_attrs.update({
-            "bodySizeX_mm": body_size_x,
-            "outputDiameter_mm": output_radius * 2.0,
-            "outputLength_mm": output_length,
-        })
-    elif component_kind == "slm":
-        panel_thickness = float(
-            optics_attrs.get(
-                "screenThickness_mm",
-                min(max(size[0] * 0.005, 0.2), 1.0),
-            )
-        )
-        # Keep the active screen at the optical origin and start the housing
-        # immediately behind it. Otherwise an envelope-sized red Cube hides
-        # the screen inside itself.
-        body_min_x = panel_thickness / 2.0
-        body_max_x = maximum[0]
-        if body_max_x <= body_min_x:
-            body_min_x = minimum[0]
-        body_size_x = body_max_x - body_min_x
-        body_center_x = (body_min_x + body_max_x) / 2.0
-        # The SLM's local origin is the active screen center. This keeps the
-        # optical +X axis passing through the display rather than the housing
-        # bounding-box center.
-        panel_center_x = 0.0
-        panel_center_y = 0.0
-        panel_center_z = 0.0
-        panel_size_y = min(
-            float(optics_attrs.get(
-                "screenWidth_mm",
-                optics_attrs.get("activeWidth_mm", size[1] * 0.5),
-            )),
-            size[1],
-        )
-        panel_size_z = min(
-            float(optics_attrs.get(
-                "screenHeight_mm",
-                optics_attrs.get("activeHeight_mm", size[2] * 0.5),
-            )),
-            size[2],
-        )
-
-        body = UsdGeom.Cube.Define(stage, f"/{root_prim_name}/Housing")
-        body.CreateSizeAttr(1.0)
-        add_primitive_transform(
-            body,
-            (body_center_x, center[1], center[2]),
-            (body_size_x, size[1], size[2]),
-        )
-        set_gprim_appearance(body, (0.65, 0.06, 0.05), 1.0)
-
-        panel = UsdGeom.Cube.Define(stage, f"/{root_prim_name}/Display")
-        panel.CreateSizeAttr(1.0)
-        add_primitive_transform(
-            panel,
-            (panel_center_x, panel_center_y, panel_center_z),
-            (panel_thickness, panel_size_y, panel_size_z),
-        )
-        set_gprim_appearance(panel, (0.32, 0.34, 0.37), 1.0)
-        primitive_attrs.update({
-            "bodyCenterX_mm": body_center_x,
-            "bodySizeX_mm": body_size_x,
-            "panelX_mm": panel_center_x,
-            "panelY_mm": panel_center_y,
-            "panelZ_mm": panel_center_z,
-            "panelThickness_mm": panel_thickness,
-        })
-    elif component_kind == "iris":
-        radius = min(size[1], size[2]) / 2.0
-        body = UsdGeom.Cylinder.Define(stage, f"/{root_prim_name}/Housing")
-        body.CreateAxisAttr(UsdGeom.Tokens.x)
-        body.CreateRadiusAttr(radius)
-        body.CreateHeightAttr(size[0])
-        add_primitive_transform(body, center)
-        set_gprim_appearance(body, display_color, 1.0)
-        primitive_attrs.update({
-            "outerDiameter_mm": radius * 2.0,
-            "thickness_mm": size[0],
-        })
-    elif component_kind == "mount" and optics_attrs.get("loShape") == "cross":
-        bar_width = float(optics_attrs.get("crossBarWidth_mm", 10.0))
-        cross_display_color = (0.051269, 0.051269, 0.051269)
-        # For a rotated rectangle, both its length and width contribute to the
-        # axis-aligned square envelope. Subtract the bar width so the X ends
-        # at the source model's four corners instead of protruding past them.
-        bar_length = max(
-            math.hypot(size[1], size[2]) - bar_width,
-            bar_width,
-        )
-        for name, angle in (("DiagonalA", 45.0), ("DiagonalB", -45.0)):
-            bar = UsdGeom.Cube.Define(
-                stage, f"/{root_prim_name}/{name}"
-            )
-            bar.CreateSizeAttr(1.0)
-            xformable = UsdGeom.Xformable(bar.GetPrim())
-            translate = xformable.AddTranslateOp()
-            translate.Set(Gf.Vec3d(*center))
-            rotate = xformable.AddRotateXOp()
-            rotate.Set(angle)
-            scale = xformable.AddScaleOp()
-            scale.Set(Gf.Vec3f(size[0], bar_length, bar_width))
-            xformable.SetXformOpOrder([translate, rotate, scale])
-            set_gprim_appearance(
-                bar,
-                cross_display_color,
-                display_opacity,
-            )
-        corner_y = max((size[1] - bar_width) / 2.0, 0.0)
-        corner_z = max((size[2] - bar_width) / 2.0, 0.0)
-        for name, y_sign, z_sign in (
-            ("CornerTopLeft", -1.0, 1.0),
-            ("CornerTopRight", 1.0, 1.0),
-            ("CornerBottomLeft", -1.0, -1.0),
-            ("CornerBottomRight", 1.0, -1.0),
-        ):
-            corner = UsdGeom.Cube.Define(
-                stage, f"/{root_prim_name}/{name}"
-            )
-            corner.CreateSizeAttr(1.0)
-            add_primitive_transform(
-                corner,
-                (
-                    center[0],
-                    center[1] + y_sign * corner_y,
-                    center[2] + z_sign * corner_z,
-                ),
-                (size[0], bar_width, bar_width),
-            )
-            set_gprim_appearance(
-                corner,
-                cross_display_color,
-                display_opacity,
-            )
-        primitive_attrs.update({
-            "crossBarLength_mm": bar_length,
-            "crossBarWidth_mm": bar_width,
-        })
-    else:
-        body = UsdGeom.Cube.Define(stage, f"/{root_prim_name}/Bounds")
-        body.CreateSizeAttr(1.0)
-        add_primitive_transform(body, center, size)
-        set_gprim_appearance(body, display_color, display_opacity)
-
-    for name, value in primitive_attrs.items():
-        create_optics_attribute(root, name, value)
-    stage.GetRootLayer().Save()
-
-
-def write_lo_proxy(
-    source_points: list[tuple[float, float, float]],
-    source_indices: list[int],
-    source_triangle_colors: list[tuple[float, float, float]],
-    source_regions: list[SourceRegion],
-    output_path: Path,
-    *,
-    component_type: str,
-    root_prim_name: str,
-    source_forward_axis: str,
-    source_origin: tuple[float, float, float],
-    source_roll_deg: float,
-    optics_attrs: dict[str, Any],
-    display_opacity: float,
-    proxy_kind: str,
-    segments: int,
-    target_triangles: int,
-    primitive_source_points: list[tuple[float, float, float]] | None = None,
-) -> tuple[
-    int,
-    tuple[float, float, float],
-    tuple[float, float, float],
-    LoPalette,
-]:
-    """Write a tiny proxy that keeps the hi mesh's bounds and local origin."""
-    bounds_points = (
-        primitive_source_points
-        if proxy_kind == "primitive" and primitive_source_points is not None
-        else source_points
-    )
-    minimum, maximum = oriented_bounds(
-        bounds_points,
-        source_forward_axis,
-        source_origin,
-        source_roll_deg,
-    )
-    oriented_points = [
-        orient_point(
-            point,
-            source_forward_axis,
-            source_origin,
-            source_roll_deg,
-        )
-        for point in source_points
-    ]
-    palette = select_lo_palette(
-        oriented_points,
-        source_indices,
-        source_triangle_colors,
-    )
-    if proxy_kind == "primitive":
-        primitive_points = [
-            orient_point(
-                point,
-                source_forward_axis,
-                source_origin,
-                source_roll_deg,
-            )
-            for point in bounds_points
-        ]
-        write_lo_primitives(
-            primitive_points,
-            output_path,
-            component_type=component_type,
-            root_prim_name=root_prim_name,
-            optics_attrs=optics_attrs,
-            display_color=palette.selected_colors[0],
-            display_opacity=display_opacity,
-        )
-        return 0, minimum, maximum, palette
-    if proxy_kind == "surface":
-        points, indices, triangle_colors = simplify_surface_regions(
-            source_regions,
-            source_forward_axis,
-            target_triangles,
-            source_origin,
-            source_roll_deg,
-        )
-        mesh_parts = split_mesh_by_palette(
-            points,
-            indices,
-            triangle_colors,
-            palette,
-        )
-    elif proxy_kind == "convex-hull":
-        if "iris" in component_type.lower():
-            aperture = float(optics_attrs.get("aperture_mm", 4.0))
-            points, indices = make_convex_hull_ring_proxy(
-                oriented_points,
-                aperture,
-            )
-        else:
-            points, indices = make_convex_hull_proxy(oriented_points)
-        mesh_parts = None
-    elif proxy_kind == "cylinder":
-        aperture = None
-        if "iris" in component_type.lower():
-            aperture = float(
-                optics_attrs.get(
-                    "aperture_mm",
-                    min(maximum[1] - minimum[1], maximum[2] - minimum[2]) * 0.15,
-                )
-            )
-        points, indices = make_cylinder_proxy(
-            minimum,
-            maximum,
-            segments,
-            aperture,
-        )
-        mesh_parts = None
-    elif proxy_kind == "box":
-        points, indices = make_box_proxy(minimum, maximum)
-        mesh_parts = None
-    else:
-        raise ValueError(f"未対応のloプロキシです: {proxy_kind}")
-
-    write_usda_mesh(
-        points,
-        indices,
-        output_path,
-        component_type=component_type,
-        root_prim_name=root_prim_name,
-        source_forward_axis="+X",
-        optics_attrs=optics_attrs,
-        display_color=palette.selected_colors[0],
-        display_opacity=display_opacity,
-        mesh_parts=mesh_parts,
-    )
-    return len(indices) // 3, minimum, maximum, palette
 
 
 def write_usda_mesh(
@@ -2793,7 +1473,7 @@ def write_usda_mesh(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "STEPファイルをOpticalTwin用のhi.usda/lo.usdaへ変換します。"
+            "STEPファイルをOpticalTwin用のmodel.usdaへ変換します。"
         )
     )
     parser.add_argument(
@@ -2810,70 +1490,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="components/以下のディレクトリ名（省略時はSTEPのファイル名）",
     )
     parser.add_argument(
-        "--lod",
-        choices=(*LOD_NAMES, "both"),
-        default="hi",
-        help="生成する詳細度（既定値: hi）",
-    )
-    parser.add_argument(
         "--output",
         type=Path,
-        help="出力先。--lod hiまたはloの場合のみ指定できます",
+        help="出力先（省略時は components/<名前>/model.usda）",
     )
     parser.add_argument(
-        "--hi-linear-deflection",
+        "--linear-deflection",
         type=float,
-        default=LOD_MESH_SETTINGS["hi"][0],
+        default=MESH_LINEAR_DEFLECTION_MM,
         metavar="MM",
-        help="hiメッシュの曲面に対する距離許容誤差（既定値: 0.1 mm）",
+        help="メッシュの曲面に対する距離許容誤差（既定値: 0.1 mm）",
     )
     parser.add_argument(
-        "--hi-angular-deflection",
+        "--angular-deflection",
         type=float,
-        default=LOD_MESH_SETTINGS["hi"][1],
+        default=MESH_ANGULAR_DEFLECTION_RAD,
         metavar="RAD",
-        help="hiメッシュの曲面に対する角度許容誤差（既定値: 0.5 rad）",
-    )
-    parser.add_argument(
-        "--lo-linear-deflection",
-        type=float,
-        default=LOD_MESH_SETTINGS["lo"][0],
-        metavar="MM",
-        help="--lo-proxy mesh時の距離許容誤差（既定値: 2.0 mm）",
-    )
-    parser.add_argument(
-        "--lo-angular-deflection",
-        type=float,
-        default=LOD_MESH_SETTINGS["lo"][1],
-        metavar="RAD",
-        help="--lo-proxy mesh時の角度許容誤差（既定値: 1.0 rad）",
-    )
-    parser.add_argument(
-        "--lo-proxy",
-        choices=LO_PROXY_MODES,
-        default="auto",
-        help=(
-            "loの形状。autoは通常USD基本形状のprimitive、"
-            "mountは低詳細度meshを使用します。"
-            "convex-hullはCADの最外頂点を結んだ簡略Meshを作ります"
-        ),
-    )
-    parser.add_argument(
-        "--lo-segments",
-        type=int,
-        default=96,
-        metavar="N",
-        help="--lo-proxy cylinderの円周分割数（既定値: 96）",
-    )
-    parser.add_argument(
-        "--lo-target-triangles",
-        type=int,
-        default=None,
-        metavar="N",
-        help=(
-            "surfaceプロキシの目標三角形数"
-            "（既定値: lens=300、その他=2000）"
-        ),
+        help="メッシュの曲面に対する角度許容誤差（既定値: 0.5 rad）",
     )
     parser.add_argument(
         "--type",
@@ -2930,32 +1563,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="STEPに色がない面の0〜1 RGB表示色",
     )
     parser.add_argument(
-        "--lo-color",
-        nargs=3,
-        type=float,
-        default=None,
-        metavar=("R", "G", "B"),
-        help="lo.usdaだけに適用する0〜1 RGB表示色",
-    )
-    parser.add_argument(
         "--color-reference-step",
         type=Path,
         help=(
-            "hi生成時、色のない入力STEPへ形状が近い参照STEPの"
+            "色のない入力STEPへ形状が近い参照STEPの"
             "面色を自動位置合わせして補完します"
         ),
     )
     parser.add_argument(
         "--preserve-step-parts",
         action="store_true",
-        help="STEPアセンブリの末端部品を個別のXformとしてhiへ保持します",
+        help="STEPアセンブリの末端部品を個別のXformとして保持します",
     )
     parser.add_argument(
         "--preserve-step-solids",
         action="store_true",
         help=(
             "STEP内の独立したSolidを体積降順のCADMesh_001からの"
-            "個別Meshとしてhiへ保持します"
+            "個別Meshとして保持します"
         ),
     )
     parser.add_argument(
@@ -2963,7 +1588,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "STEP内のShellを表面積降順のCADMesh_001からの"
-            "個別Meshとしてhiへ保持します"
+            "個別Meshとして保持します"
         ),
     )
     parser.add_argument(
@@ -2984,7 +1609,6 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "生成後のMesh名ごとの0〜1 RGB表示色（例: CADMesh_004=0,0,0）。"
             "名前は部分一致、先に書いた規則が優先。"
-            "Meshを書き出すLOD（hiと--lo-proxy meshのlo）に適用します"
         ),
     )
     parser.add_argument(
@@ -2995,7 +1619,6 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "生成後のMesh名ごとの0（透明）〜1（不透明）。"
             "名前は部分一致、先に書いた規則が優先。"
-            "Meshを書き出すLOD（hiと--lo-proxy meshのlo）に適用します"
         ),
     )
     parser.add_argument(
@@ -3101,28 +1724,10 @@ def main(argv: list[str] | None = None) -> None:
         parser.error("--metalnessは0〜1で指定してください")
     if args.roughness is not None and not 0.0 <= args.roughness <= 1.0:
         parser.error("--roughnessは0〜1で指定してください")
-    if args.output is not None and args.lod == "both":
-        parser.error("--outputは--lod bothと同時に指定できません")
-    if args.lo_segments < 12 or args.lo_segments % 4 != 0:
-        parser.error("--lo-segmentsは12以上かつ4の倍数にしてください")
-    if (
-        args.lo_target_triangles is not None
-        and args.lo_target_triangles < 100
-    ):
-        parser.error("--lo-target-trianglesは100以上にしてください")
-    mesh_settings = {
-        "hi": (args.hi_linear_deflection, args.hi_angular_deflection),
-        "lo": (args.lo_linear_deflection, args.lo_angular_deflection),
-    }
-    for lod_name, (linear_deflection, angular_deflection) in mesh_settings.items():
-        if linear_deflection <= 0.0:
-            parser.error(
-                f"--{lod_name}-linear-deflectionは0より大きくしてください"
-            )
-        if angular_deflection <= 0.0:
-            parser.error(
-                f"--{lod_name}-angular-deflectionは0より大きくしてください"
-            )
+    if args.linear_deflection <= 0.0:
+        parser.error("--linear-deflectionは0より大きくしてください")
+    if args.angular_deflection <= 0.0:
+        parser.error("--angular-deflectionは0より大きくしてください")
 
     using_default_step = not args.step_paths
     if using_default_step:
@@ -3181,14 +1786,6 @@ def main(argv: list[str] | None = None) -> None:
         optics_attrs["roughness"] = args.roughness
     elif metal_component:
         optics_attrs.setdefault("roughness", 0.08)
-    lo_target_triangles = (
-        args.lo_target_triangles
-        if args.lo_target_triangles is not None
-        else LO_TARGET_TRIANGLES_BY_TYPE.get(
-            args.component_type.lower(),
-            DEFAULT_LO_TARGET_TRIANGLES,
-        )
-    )
 
     # Preserve the existing no-argument LA4380-A lens metadata.
     if using_default_step and not args.attr and args.component_type == "lens":
@@ -3338,7 +1935,7 @@ def main(argv: list[str] | None = None) -> None:
     # Rod catalogue models intentionally use their envelope center as the
     # placement origin. Laser STEP files, however, already carry the optical
     # origin used by the legacy top-level assets. Re-centering only the nested
-    # Laser catalogue shifted NPL64A by 3.063 mm and made its hi geometry miss
+    # Laser catalogue shifted NPL64A by 3.063 mm and made its geometry miss
     # the beam even though both catalogue entries came from the same STEP.
     center_generated_component = (
         rod_component or bottom_centered_component or breadboard_component
@@ -3352,7 +1949,7 @@ def main(argv: list[str] | None = None) -> None:
     ):
         # Vendor catalogue STEP files are not consistently authored around
         # (0,0,0), and Laser models do not consistently share a forward axis.
-        mesh_shape(shape, *mesh_settings["hi"])
+        mesh_shape(shape, args.linear_deflection, args.angular_deflection)
         source_points = [
             point
             for region in all_source_regions(False)
@@ -3499,272 +2096,136 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Shape type: {shape.ShapeType()}")
     print(f"Shape is null: {shape.IsNull()}")
 
-    lod_names = LOD_NAMES if args.lod == "both" else (args.lod,)
-    hi_source_points = None
-    hi_source_indices = None
-    hi_source_triangle_colors = None
-    hi_source_regions = None
-    for lod_name in lod_names:
-        linear_deflection, angular_deflection = mesh_settings[lod_name]
-        output_path = args.output or (
-            ROOT_DIR / "components" / component_name / f"{lod_name}.usda"
+    linear_deflection = args.linear_deflection
+    angular_deflection = args.angular_deflection
+    output_path = args.output or (
+        ROOT_DIR / "components" / component_name / MODEL_FILE
+    )
+    print(
+        f"--- {MODEL_FILE}を生成 "
+        f"(距離誤差={linear_deflection} mm, "
+        f"角度誤差={angular_deflection} rad) ---"
+    )
+    mesh_shape(shape, linear_deflection, angular_deflection)
+    print("Shapeのメッシュ化に成功しました")
+    inspect_mesh(shape, verbose_faces=args.verbose_faces)
+
+    use_step_colors = not args.ignore_step_colors
+    mesh_parts = all_colored_mesh_parts(
+        use_step_colors,
+        preserve_solids=(
+            args.preserve_step_solids
+        ),
+        preserve_shells=(
+            args.preserve_step_shells
+        ),
+    )
+    if reference_source is not None:
+        reference_shape, _, reference_color_tool = reference_source
+        mesh_shape(
+            reference_shape,
+            linear_deflection,
+            angular_deflection,
         )
-        proxy_kind = lo_proxy_kind(args.component_type, args.lo_proxy)
-        if lcp6x_component and args.lo_proxy == "auto":
-            proxy_kind = "primitive"
-
-        if lod_name == "lo" and proxy_kind != "mesh":
-            if hi_source_points is None:
-                hi_linear, hi_angular = mesh_settings["hi"]
-                print(
-                    "--- hiと一致する外形・中心を計測 "
-                    f"(距離誤差={hi_linear} mm, "
-                    f"角度誤差={hi_angular} rad) ---"
-                )
-                mesh_shape(shape, hi_linear, hi_angular)
-                hi_source_regions = all_source_regions(True)
-                (
-                    hi_source_points,
-                    hi_source_indices,
-                    hi_source_triangle_colors,
-                ) = combine_source_regions(hi_source_regions)
-            else:
-                # Every lo model uses the surface-area-dominant color from hi.
-                hi_source_regions = all_source_regions(True)
-                (
-                    hi_source_points,
-                    hi_source_indices,
-                    hi_source_triangle_colors,
-                ) = combine_source_regions(hi_source_regions)
-
-            rod_primitive_points = None
-            if rod_component:
-                rod_parts = split_rod_hi_parts(
-                    all_colored_mesh_parts(True)
-                )
-                # The low-detail Rod represents the central shaft plus the
-                # two inner end pieces (CADMesh_001, _002, and _004).
-                rod_primitive_points = [
-                    point
-                    for index in (0, 1, 3)
-                    for point in rod_parts[index].points
-                ]
-                positive_inner_points = [
-                    orient_point(
-                        point,
-                        effective_source_axis,
-                        effective_source_origin,
-                        effective_source_roll,
-                    )
-                    for point in rod_parts[1].points
-                ]
-                negative_inner_points = [
-                    orient_point(
-                        point,
-                        effective_source_axis,
-                        effective_source_origin,
-                        effective_source_roll,
-                    )
-                    for point in rod_parts[3].points
-                ]
-                _, positive_inner_maximum = oriented_bounds(
-                    positive_inner_points,
-                    "+X",
-                )
-                negative_inner_minimum, _ = oriented_bounds(
-                    negative_inner_points,
-                    "+X",
-                )
-                optics_attrs["rodEndMinX_mm"] = negative_inner_minimum[0]
-                optics_attrs["rodEndMaxX_mm"] = positive_inner_maximum[0]
-
-            triangle_count, minimum, maximum, palette = write_lo_proxy(
-                hi_source_points,
-                hi_source_indices,
-                hi_source_triangle_colors,
-                hi_source_regions,
-                output_path,
-                component_type=args.component_type,
-                root_prim_name=root_prim_name,
-                source_forward_axis=effective_source_axis,
-                source_origin=effective_source_origin,
-                source_roll_deg=effective_source_roll,
-                optics_attrs=optics_attrs,
-                display_opacity=args.opacity,
-                proxy_kind=proxy_kind,
-                segments=args.lo_segments,
-                target_triangles=lo_target_triangles,
-                primitive_source_points=rod_primitive_points,
-            )
-            if args.lo_color is not None:
-                stage = Usd.Stage.Open(str(output_path))
-                for prim in stage.Traverse():
-                    if prim.IsA(UsdGeom.Gprim):
-                        UsdGeom.Gprim(prim).CreateDisplayColorAttr(
-                            [tuple(args.lo_color)]
-                        )
-                stage.GetRootLayer().Save()
-            configure_generated_asset(
-                output_path,
-                rotate_x_deg=(
-                    holder_rotate_x
-                    if holder_component
-                    else 0.0
-                    if post_component or breadboard_component
-                    else 90.0
-                ),
-                rotate_y_deg=(
-                    holder_rotate_y
-                    if holder_component
-                    else -90.0 if post_component else 0.0
-                ),
-                bottom_centered=bottom_centered_component,
-            )
-            size = tuple(
-                maximum[axis] - minimum[axis]
-                for axis in range(3)
-            )
-            center = tuple(
-                (maximum[axis] + minimum[axis]) / 2.0
-                for axis in range(3)
-            )
-            print(f"--- lo.usdaプロキシ: {proxy_kind} ---")
-            print(f"外形寸法(X, Y, Z): {size}")
-            print(f"外形中心(X, Y, Z): {center}")
-            print(f"三角形数: {triangle_count}")
-            print(
-                "STEP主要色の面積比: "
-                + ", ".join(
-                    f"{ratio:.1%}"
-                    for ratio in palette.area_ratios
-                )
-            )
-            print(
-                f"色数: {palette.source_color_count}"
-                f" → {len(palette.selected_colors)}"
-            )
-            print("lo.usdaの生成に成功しました")
-            print(f"出力ファイル: {output_path}")
-            continue
-
-        print(
-            f"--- {lod_name}.usdaを生成 "
-            f"(距離誤差={linear_deflection} mm, "
-            f"角度誤差={angular_deflection} rad) ---"
+        reference_parts = extract_colored_mesh_data(
+            reference_shape,
+            reference_color_tool,
+            None,
         )
-        mesh_shape(shape, linear_deflection, angular_deflection)
-        print("Shapeのメッシュ化に成功しました")
-        inspect_mesh(shape, verbose_faces=args.verbose_faces)
-
-        use_step_colors = lod_name == "hi" and not args.ignore_step_colors
-        mesh_parts = all_colored_mesh_parts(
-            use_step_colors,
-            preserve_solids=(
-                lod_name == "hi" and args.preserve_step_solids
-            ),
-            preserve_shells=(
-                lod_name == "hi" and args.preserve_step_shells
-            ),
-        )
-        if lod_name == "hi" and reference_source is not None:
-            reference_shape, _, reference_color_tool = reference_source
-            mesh_shape(
-                reference_shape,
-                linear_deflection,
-                angular_deflection,
+        mesh_parts = transfer_mesh_colors(mesh_parts, reference_parts)
+        if args.preserve_step_parts:
+            mesh_parts = collapse_to_one_color_per_group(mesh_parts)
+    if rod_component:
+        mesh_parts = split_rod_parts(mesh_parts)
+        positive_inner_points = [
+            orient_point(
+                point,
+                effective_source_axis,
+                effective_source_origin,
+                effective_source_roll,
             )
-            reference_parts = extract_colored_mesh_data(
-                reference_shape,
-                reference_color_tool,
-                None,
-            )
-            mesh_parts = transfer_mesh_colors(mesh_parts, reference_parts)
-            if args.preserve_step_parts:
-                mesh_parts = collapse_to_one_color_per_group(mesh_parts)
-        if lod_name == "hi" and rod_component:
-            mesh_parts = split_rod_hi_parts(mesh_parts)
-            positive_inner_points = [
-                orient_point(
-                    point,
-                    effective_source_axis,
-                    effective_source_origin,
-                    effective_source_roll,
-                )
-                for point in mesh_parts[1].points
-            ]
-            negative_inner_points = [
-                orient_point(
-                    point,
-                    effective_source_axis,
-                    effective_source_origin,
-                    effective_source_roll,
-                )
-                for point in mesh_parts[3].points
-            ]
-            _, positive_inner_maximum = oriented_bounds(
-                positive_inner_points,
-                "+X",
-            )
-            negative_inner_minimum, _ = oriented_bounds(
-                negative_inner_points,
-                "+X",
-            )
-            optics_attrs["rodEndMinX_mm"] = negative_inner_minimum[0]
-            optics_attrs["rodEndMaxX_mm"] = positive_inner_maximum[0]
-        points = [point for part in mesh_parts for point in part.points]
-        face_vertex_indices = [
-            index
-            for part in mesh_parts
-            for index in part.face_vertex_indices
+            for point in mesh_parts[1].points
         ]
-        if lod_name == "hi":
-            hi_source_regions = all_source_regions(use_step_colors)
-            (
-                hi_source_points,
-                hi_source_indices,
-                hi_source_triangle_colors,
-            ) = combine_source_regions(hi_source_regions)
-
-        print("--- 抽出結果 ---")
-        print(f"頂点数: {len(points)}")
-        print(f"三角形数: {len(face_vertex_indices) // 3}")
-        print(f"色数: {len(mesh_parts) if mesh_parts else 1}")
-
-        write_usda_mesh(
-            points,
-            face_vertex_indices,
-            output_path,
-            component_type=args.component_type,
-            root_prim_name=root_prim_name,
-            source_forward_axis=effective_source_axis,
-            source_origin=effective_source_origin,
-            source_roll_deg=effective_source_roll,
-            optics_attrs=optics_attrs,
-            display_color=tuple(args.color),
-            display_opacity=args.opacity,
-            mesh_parts=mesh_parts,
-            mesh_color_rules=mesh_color_rules,
-            mesh_opacity_rules=mesh_opacity_rules,
+        negative_inner_points = [
+            orient_point(
+                point,
+                effective_source_axis,
+                effective_source_origin,
+                effective_source_roll,
+            )
+            for point in mesh_parts[3].points
+        ]
+        _, positive_inner_maximum = oriented_bounds(
+            positive_inner_points,
+            "+X",
         )
-        configure_generated_asset(
-            output_path,
-            rotate_x_deg=(
-                holder_rotate_x
-                if holder_component
-                else 0.0
-                if post_component or breadboard_component
-                else 90.0
-            ),
-            rotate_y_deg=(
-                holder_rotate_y
-                if holder_component
-                else -90.0 if post_component else 0.0
-            ),
-            bottom_centered=bottom_centered_component,
+        negative_inner_minimum, _ = oriented_bounds(
+            negative_inner_points,
+            "+X",
         )
+        optics_attrs["rodEndMinX_mm"] = negative_inner_minimum[0]
+        optics_attrs["rodEndMaxX_mm"] = positive_inner_maximum[0]
+    points = [point for part in mesh_parts for point in part.points]
+    face_vertex_indices = [
+        index
+        for part in mesh_parts
+        for index in part.face_vertex_indices
+    ]
 
-        print(f"{lod_name}.usdaの生成に成功しました")
-        print(f"出力ファイル: {output_path}")
+    print("--- 抽出結果 ---")
+    print(f"頂点数: {len(points)}")
+    print(f"三角形数: {len(face_vertex_indices) // 3}")
+    print(f"色数: {len(mesh_parts) if mesh_parts else 1}")
+
+    envelope_minimum, envelope_maximum = oriented_bounds(
+        points,
+        effective_source_axis,
+        effective_source_origin,
+        effective_source_roll,
+    )
+    optics_attrs.update(measured_envelope_attrs(
+        envelope_minimum,
+        envelope_maximum,
+        component_type=args.component_type,
+        rod=rod_component,
+        optics_attrs=optics_attrs,
+    ))
+
+    write_usda_mesh(
+        points,
+        face_vertex_indices,
+        output_path,
+        component_type=args.component_type,
+        root_prim_name=root_prim_name,
+        source_forward_axis=effective_source_axis,
+        source_origin=effective_source_origin,
+        source_roll_deg=effective_source_roll,
+        optics_attrs=optics_attrs,
+        display_color=tuple(args.color),
+        display_opacity=args.opacity,
+        mesh_parts=mesh_parts,
+        mesh_color_rules=mesh_color_rules,
+        mesh_opacity_rules=mesh_opacity_rules,
+    )
+    configure_generated_asset(
+        output_path,
+        rotate_x_deg=(
+            holder_rotate_x
+            if holder_component
+            else 0.0
+            if post_component or breadboard_component
+            else 90.0
+        ),
+        rotate_y_deg=(
+            holder_rotate_y
+            if holder_component
+            else -90.0 if post_component else 0.0
+        ),
+        bottom_centered=bottom_centered_component,
+    )
+
+    print(f"{MODEL_FILE}の生成に成功しました")
+    print(f"出力ファイル: {output_path}")
 
 
 

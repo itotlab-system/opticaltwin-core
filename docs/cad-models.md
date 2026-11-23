@@ -2,8 +2,8 @@
 
 [← Back to the README](../README.md)
 
-Out of the box, OpticalTwin draws parts as simple generated shapes, so the
-*Simple* and *Detailed* views look the same. This page shows how to add the
+Out of the box, OpticalTwin draws parts as simple generated shapes. This page
+shows how to add the
 manufacturer's own 3D model of a part you own, so the bench on screen looks like
 the bench on your table.
 
@@ -20,11 +20,33 @@ manufacturer's site, and OpticalTwin converts it on your machine.
  2. Download the STEP file        from the part's page on the manufacturer's site
  3. Save it into cad/<Folder>/    the folder says what kind of part it is
  4. Open your project again       the file is converted, a few seconds per part
- 5. ▦ Add a part → <Folder>       pick it and click on the board
- 6. Switch to Detailed            see the full model
+ 5. ▦ Add a part → <Folder>       pick it and click on the board, as its full model
 ```
 
-The example below adds a Thorlabs lens. Every part works the same way.
+## Try it with three parts
+
+A first run that shows every part of the flow: a lens and a mirror you place
+yourself, and a breadboard that replaces the generated one on its own. Download
+the STEP file from each page and save it at the path shown (steps 2 and 3 below
+explain both).
+
+| Part | Product page | Save as |
+|---|---|---|
+| Lens LA1417-AB | <https://www.thorlabs.com/thorproduct.cfm?partnumber=LA1417-AB> | `cad/Lens/LA1417-AB-Step.step` |
+| Mirror BBSQ2-E02 | <https://www.thorlabs.com/thorproduct.cfm?partnumber=BBSQ2-E02> | `cad/Mirror/BBSQ2-E02-Step.step` |
+| Breadboard MB6060/M | <https://www.thorlabs.com/thorproduct.cfm?partnumber=MB6060/M> | `cad/Breadboard/MB6060_M-Step.step` |
+
+Create the folders first, from the repository root:
+
+```bash
+mkdir -p cad/Lens cad/Mirror cad/Breadboard      # Linux and macOS
+mkdir cad\Lens cad\Mirror cad\Breadboard          # Windows
+```
+
+Then open `project1`: the board is now the Thorlabs one, *Lens* and *Mirror*
+appear in **▦ Add a part**, each drawn from its full model.
+
+The steps below go through the same flow for any part.
 
 ## 1. Install the converter, once
 
@@ -53,13 +75,16 @@ the newly installed converter.
 ## 3. Save it into the folder for its kind of part
 
 Create a folder under `cad/` named after the kind of part, and save the file in
-it. Name the file after the part number: that name is what the part browser
-shows.
+it. **Keep the file name the manufacturer gave it** (Thorlabs files are named
+like `LA1417-AB-Step.step`). The name is what the part browser shows, and some
+parts are converted with settings tuned for them, which are matched by that
+name; `python tools/fetch_cad.py --list` prints the expected name for every part
+in the lab's list.
 
 ```
 cad/
-├── Lens/LA1417-AB.step
-├── Mirror/BBSQ2-E02.step
+├── Lens/LA1417-AB-Step.step
+├── Mirror/BBSQ2-E02-Step.step
 └── Breadboard/MB6060_M-Step.step
 ```
 
@@ -93,9 +118,23 @@ the page. New STEP files are converted while the project opens: a few seconds
 per part, longer for a large one such as a camera body. You do not need to
 restart the server for new files, only for installing the converter.
 
-Converted parts are written to `components/<Folder>/<file name>/`, with a
-detailed model and a light one for fast editing. Both `cad/` and `components/`
-stay on your machine.
+**Keep an eye on the terminal running `python server.py` during this first
+open.** Conversion problems are reported there, not in the browser. A file that
+cannot be converted is skipped, and the terminal says so once, starting with:
+
+```
+  Could not convert cad/Mirror/BBSQ2-E02-Step.step: the file could not be read as a STEP model
+```
+
+The project and every other part still open. Usually the download was
+incomplete or saved a web page instead of the model: download it again and
+save it over the old file, and it is tried again the next time a project
+opens. If a good file still fails, see
+[Parts the folders do not cover](#parts-the-folders-do-not-cover) to convert it
+by hand.
+
+Each converted part is written to `components/<Folder>/<file name>/model.usda`,
+one model per part. Both `cad/` and `components/` stay on your machine.
 
 ## 5. Put the part on the bench
 
@@ -111,12 +150,6 @@ A CAD part is added *next to* the generated parts already on your bench; it
 does not replace them. To upgrade an existing bench, place the CAD part where
 the generated one is, using the Inspector on the right to type the same
 position, then select the generated part and delete it.
-
-## 6. See the detail
-
-Switch the view from **Simple** to **Detailed** in the toolbar. CAD parts now
-show their full model; *Simple* keeps a lighter version that stays fast while
-you move things. Generated parts look the same in both.
 
 ## Breadboards and lasers
 
@@ -151,7 +184,7 @@ lens, a beam expander) is converted by hand, with its type given explicitly:
 
 ```bash
 python -m opticaltwin.cad_importer cad/Target/R1L1S7P-Step.step --type target \
-    --lod both --component-name Target/R1L1S7P-Step
+    --component-name Target/R1L1S7P-Step
 ```
 
 The same command fixes a model that comes in facing the wrong way, sitting off
@@ -164,5 +197,6 @@ its optical axis, or too heavy to edit smoothly. See
 |---|---|
 | The server prints "STEP file(s) … are not converted" | The converter is not installed, or was installed while the server was running. Run `pip install -r requirements-cad.txt` with the environment active, then restart the server. |
 | An import error naming `OCP` | A different version of the converter is installed. Install the pinned one with `pip install -r requirements-cad.txt`. |
+| The terminal says `Could not convert …` | The file is not a readable STEP model, usually an incomplete download. Download it again and save it over the old one; it is tried again the next time a project opens. |
 | The part is missing from the part browser | Check that the file is directly inside one of the folders above (not in a subfolder, and not still inside a `.zip`), and ends in `.step` or `.stp`. Then open the project again. |
-| *Detailed* looks the same as *Simple* | The parts on the bench are still the generated ones. Add the CAD part from the part browser (step 5). |
+| The bench still shows simple shapes | The parts on the bench are still the generated ones. Add the CAD part from the part browser (step 5). |
