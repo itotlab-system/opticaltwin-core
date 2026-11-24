@@ -973,3 +973,196 @@ target = "Camera/205-16-10_Cam.44x29_USB3.1C_CS-FP_13,3_ER-6,7.stp"
 product_page = ""
 step_url = ""
 license_note = "Provenance unconfirmed. Do not publish a link until it is established."
+
+# ---------------------------------------------------------------------------
+# Rails, carriers, stage and laser-arm parts (added 2026-11)
+# ---------------------------------------------------------------------------
+# Rails, carriers and the XY stage: cad/Mount, converted automatically and
+# painted matte black by UNCOLORED_BLACK_MOUNTS in backend/catalog.py (their
+# STEPs carry no colours). OptoSigma's frame is up = -X; place the rail with
+# rotX 90, rotZ -90 to run along X, or rotY 90 to run along Y.
+[[parts]]
+part = "XYT1/M"
+type = "mount"
+target = "Mount/XYT1_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "RLA300/M"
+type = "mount"
+target = "Mount/RLA300_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "RC1"
+type = "mount"
+target = "Mount/RC1-Step.step"
+step_url = ""
+
+[[parts]]
+part = "OBT-300SH"
+vendor = "OptoSigma"
+type = "mount"
+target = "Mount/OBT-300SH.stp"
+product_page = "https://optosigma.com/sg_en/medium-metric-low-profile-optical-rail-300mm-OBT-300SH.html"
+step_url = ""
+license_note = """
+OptoSigma publishes CAD on each product page for use in customer designs.
+Check the terms on the page; the same rule applies as for Thorlabs -- download
+the parts you own yourself rather than redistributing the model."""
+
+[[parts]]
+part = "OBT-500SH"
+vendor = "OptoSigma"
+type = "mount"
+target = "Mount/OBT-500SH.stp"
+product_page = "https://optosigma.com/us_en/medium-metric-low-profile-optical-rail-500mm-OBT-500SH.html"
+step_url = ""
+license_note = """
+OptoSigma publishes CAD on each product page for use in customer designs.
+Check the terms on the page; the same rule applies as for Thorlabs -- download
+the parts you own yourself rather than redistributing the model."""
+
+[[parts]]
+part = "CAA-40LS"
+vendor = "OptoSigma"
+type = "mount"
+target = "Mount/CAA-40LS.stp"
+product_page = "https://www.optosigma.com/sg_en/medium-metric-optical-carrier-40mm-CAA-40LS.html"
+step_url = ""
+license_note = """
+OptoSigma publishes CAD on each product page for use in customer designs.
+Check the terms on the page; the same rule applies as for Thorlabs -- download
+the parts you own yourself rather than redistributing the model."""
+
+# Cage plates with the bore on the STEP's Z: CRM1T/M and CP32/M are converted
+# automatically with --source-forward-axis +Z and a beam aperture, by
+# Z_BORE_CAGE_PLATES in backend/catalog.py. CRM1T's scale ring is its +X face.
+[[parts]]
+part = "CRM1T/M"
+type = "mount"
+target = "Cage/CRM1T_M-Step.step"
+step_url = ""
+
+[[parts]]
+part = "CP32/M"
+type = "mount"
+target = "Cage/CP32_M-Step.step"
+step_url = ""
+
+#   python -m opticaltwin.cad_importer cad/Lens/WPH10M-532-Step.step \
+#       --component-name "Lens/WPH10M-532-Step" --type polarizer --lod both \
+#       --source-forward-axis=+X --source-roll-deg -90 \
+#       --attr clearAperture_mm=22 --attr diameter_mm=25.4 \
+#       --attr designWavelength_nm=532 \
+#       --ignore-step-colors --color 0.051269 0.051269 0.051269 \
+#       --lo-color 0.051269 0.051269 0.051269
+#
+# Mounted Ø1" zero-order half-wave plate, 532 nm. Same recipe and reasoning as
+# the WPHSM05-532 above (typed polarizer; the STEP has no colours). AUTO lays it
+# sideways, so it is converted by hand; the importer then measures diameter_mm
+# from the Ø30.48 ring itself.
+[[parts]]
+part = "WPH10M-532"
+type = "polarizer"
+target = "Lens/WPH10M-532-Step.step"
+step_url = ""
+
+#   python -m opticaltwin.cad_importer cad/Lens/LA1050-A-Step.step \
+#       --component-name "Lens/LA1050-A-Step" --type lens --lod both \
+#       --source-forward-axis=+Z --attr focalLength_mm=100 \
+#       --ignore-step-colors --opacity 0.35
+#
+# Ø2" N-BK7 plano-convex, f = 100 mm. Its STEP axis is Z; AUTO picked Y and
+# read it as a 50.8 mm thick plano disc. With +Z the importer finds the
+# plano-convex profile (flat side at -X) itself. Its STEP paints the glass an
+# opaque off-white, so --ignore-step-colors --opacity 0.35 gives it the same
+# translucent glass blue as LA1417 (whose STEP has no colours).
+[[parts]]
+part = "LA1050-A"
+type = "lens"
+target = "Lens/LA1050-A-Step.step"
+step_url = ""
+
+#   python -m opticaltwin.cad_importer cad/Holder/LHF-50.8-EE.stp \
+#       --component-name "Holder/LHF-50.8-EE" --type mount --lod both \
+#       --source-forward-axis=+X --source-roll-deg -90 \
+#       --source-origin -9 0 0 \
+#       --ignore-step-colors --color 0.051269 0.051269 0.051269 \
+#       --lo-color 0.051269 0.051269 0.051269 \
+#       --attr beamApertureRadius_mm=23
+#
+# Fixed holder for a Ø50.8 optic, M4 tap. A Z-up vendor model like the
+# KLH-BE-M22H (type mount, not holder, for the same reason): bore along +X,
+# axis 35 mm above the base, origin at mid-thickness (source x = -18..0).
+# beamApertureRadius_mm = 23 is the catalogue's φ46 clear aperture.
+[[parts]]
+part = "LHF-50.8-EE"
+vendor = "OptoSigma"
+type = "mount"
+target = "Holder/LHF-50.8-EE.stp"
+product_page = "https://optosigma.com/eu_en/fixed-lens-holder-with-m4-threads-for-50-8mm-diameter-optic-LHF-50.8-EE.html"
+step_url = ""
+license_note = """
+OptoSigma publishes CAD on each product page for use in customer designs.
+Check the terms on the page; the same rule applies as for Thorlabs -- download
+the parts you own yourself rather than redistributing the model."""
+
+#   python -m opticaltwin.cad_importer "cad/Laser Source/READYBeam.step" \
+#       --component-name "Laser Source/READYBeam" --type mount --lod both \
+#       --source-forward-axis=+X --source-origin 38.5 -35 -20 \
+#       --lo-proxy surface --lo-target-triangles 9000 \
+#       --ignore-step-colors --color 0.051269 0.051269 0.051269 \
+#       --lo-color 0.051269 0.051269 0.051269 --metalness 0
+#
+# FISBA READYBeam fiber-coupled laser box (vendor file
+# 2021_October_READYBeam_3D-Data.step, saved as READYBeam.step). Kept OUT of
+# cad/Laser on purpose: everything there is converted as `laser` and emits,
+# but on a fiber-fed bench the beam starts at the fiber end in the cage, not at
+# the box. "Laser Source" is not an auto-converted folder, so it is imported by
+# hand as a non-emitting mount. The STEP is Y-up (the embossed logo is on +Y)
+# with its fiber outlet at -X; the origin is moved to the centre of its base.
+# No colours in the STEP: black, like the real housing.
+[[parts]]
+part = "READYBeam"
+vendor = "FISBA"
+type = "mount"
+target = "Laser Source/READYBeam.step"
+product_page = "https://fisba.com/node/334"
+step_url = ""
+license_note = """
+FISBA offers the STEP file on its READYBeam page. Download it yourself rather
+than redistributing it."""
+
+#   python tools/trim_step.py "cad/Laser Source/P5-405BPM-FC-1-Step.step" \
+#       "cad/Laser Source/P5-405BPM-FC-1-End.step" --axis z --keep-above 538.6
+#   python -m opticaltwin.cad_importer "cad/Laser Source/P5-405BPM-FC-1-End.step" \
+#       --component-name "Laser/P5-405BPM-FC-1" --type laser --lod both \
+#       --source-forward-axis=+Z --source-origin -0.9 24.55 628.92 \
+#       --preserve-step-solids \
+#       --attr emissionOffset_mm=0 --attr emissionCenterY_mm=0 \
+#       --attr emissionCenterZ_mm=0 --attr wavelength_nm=532 \
+#       --color 0.72 0.72 0.74 \
+#       --mesh-color CADMesh_001=0.05,0.38,0.70 \
+#       --mesh-color CADMesh_002=0.05,0.38,0.70 \
+#       --mesh-color CADMesh_007=0.86,0.86,0.82 \
+#       --lo-color 0.05 0.38 0.70 --metalness 0.6 --roughness 0.35
+#
+# FC/PC end of a PM patch cable, as the beam source on a fiber-fed bench: the
+# light leaves the ferrule tip, so the part is a `laser` with the tip as its
+# origin and emissionOffset_mm = 0. Thorlabs' STEP is the whole straight 1 m
+# cable (source z -431.6 .. 628.9) with a connector at each end, so
+# tools/trim_step.py keeps the +Z connector and 60 mm of cable (z >= 538.6).
+# Both files sit in cad/Laser Source, which is not auto-converted: in cad/Laser
+# the full cable would be converted as a 1 m laser of its own.
+#
+# The STEP has no colours. Meshes after --preserve-step-solids: 001 cable,
+# 002 strain-relief boot (both the blue jacket, sampled by eye from IMG_1565),
+# 007 the Ø2.5 ferrule (white ceramic); the rest is the connector body,
+# coupling nut and crimp sleeve, silver. Wavelength follows the bench's
+# 532 nm half-wave plate; the cable itself is rated 400-680 nm.
+[[parts]]
+part = "P5-405BPM-FC-1"
+type = "laser"
+target = "Laser Source/P5-405BPM-FC-1-Step.step"
+step_url = ""

@@ -136,7 +136,7 @@ def _matching_post_component(holder_component):
         return None
     candidate = f"Post/TR{match.group(1)}{match.group('suffix')}"
     return candidate if os.path.exists(
-        uu.get_component_usda_path(config.LIB_DIR, candidate, "lo")
+        uu.get_component_usda_path(config.LIB_DIR, candidate)
     ) else None
 
 def _rotate_local_offset(x, y, z, rot_x, rot_y, rot_z):
@@ -187,7 +187,7 @@ def _linked_holder(stage, post):
 def _catalog_asset_type(asset):
     """Return the component type authored by a catalogue asset."""
     component_name = uu.get_component_name(asset)
-    path = uu.get_component_usda_path(config.LIB_DIR, component_name, "lo")
+    path = uu.get_component_usda_path(config.LIB_DIR, component_name)
     asset_stage = Usd.Stage.Open(path) if os.path.exists(path) else None
     if asset_stage is None or not asset_stage.GetDefaultPrim().IsValid():
         return None

@@ -51,7 +51,6 @@ export interface Component {
   // Catalogue previews only: URL of the real photograph a lab member dropped
   // into the part's components/ folder. Absent = show the rendered CAD instead.
   photo?: string;
-  renderMode?: "hi" | "lo";
   meshes?: ComponentMesh[];
   primitives?: ComponentPrimitive[];
   physics?: {
@@ -166,7 +165,6 @@ export interface ProjectData {
   boardModels?: string[];
   library: string[];
   libraryPreviews?: Record<string, Component>;
-  renderMode?: "hi" | "lo";
   pins?: PinAnnotation[]; // pin information, ?:Whether it's there or not
   callouts?: FigureCallout[];
   groups?: ComponentGroup[];
@@ -193,7 +191,6 @@ export interface MovePayload {
   partial: true;
   components: MoveComponent[];
   beam: BeamSegment[];
-  renderMode: "hi" | "lo";
   canUndo?: boolean;
   canRedo?: boolean;
   // Placing a part: the new parts in full (built exactly as a reload builds
@@ -233,6 +230,11 @@ export interface ProjectSummary {
   // the server only names someone when their recorded edit is what the layer's
   // mtime says it is — see _last_editor in server.py.
   lastEditor?: string;
+  // The saved gallery picture (projects/<n>/thumbnail.png), taken in the
+  // editor's Detailed view. null = none yet. `v` changes with every new
+  // picture (cache key for its URL); `current` is false once the bench has
+  // been edited since — see backend/thumbnails.py.
+  thumbnail?: { v: string; current: boolean } | null;
 }
 
 export interface Template {

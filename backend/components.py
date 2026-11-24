@@ -212,17 +212,18 @@ def _rod_thread_shoulder_offsets(component_prim):
     }
 
 def _rod_asset_shoulder_offsets(asset):
+    """Where a rod's threaded shoulders sit along its axis (cached per mtime).
+
+    The rod body's own ends travel in the model as optics:rodEndMinX_mm /
+    rodEndMaxX_mm, written by the CAD importer, so only the shoulders are
+    measured here.
+    """
     if not asset or not asset.lower().startswith("rod/"):
         return None
-    component_name = uu.get_component_name(asset)
-    path = uu.get_component_usda_path(config.LIB_DIR, component_name, "hi")
+    path = uu.get_component_usda_path(config.LIB_DIR, asset)
     if not os.path.isfile(path):
         return None
-    lo_path = uu.get_component_usda_path(config.LIB_DIR, component_name, "lo")
-    modified = (
-        os.path.getmtime(path),
-        os.path.getmtime(lo_path) if os.path.isfile(lo_path) else None,
-    )
+    modified = os.path.getmtime(path)
     cached = _ROD_SHOULDER_CACHE.get(path)
     if cached and cached[0] == modified:
         return cached[1]
@@ -232,18 +233,6 @@ def _rod_asset_shoulder_offsets(asset):
         if stage is not None and stage.GetDefaultPrim().IsValid()
         else None
     )
-    if result and os.path.isfile(lo_path):
-        lo_stage = Usd.Stage.Open(lo_path)
-        if lo_stage is not None and lo_stage.GetDefaultPrim().IsValid():
-            bounds = UsdGeom.BBoxCache(
-                Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]
-            ).ComputeLocalBound(
-                lo_stage.GetDefaultPrim()
-            ).ComputeAlignedRange()
-            result.update({
-                "rodLoEndMinX_mm": float(bounds.GetMin()[0]),
-                "rodLoEndMaxX_mm": float(bounds.GetMax()[0]),
-            })
     _ROD_SHOULDER_CACHE[path] = (modified, result)
     return result
 
@@ -297,7 +286,7 @@ def _component_asset_name(component_prim):
                 continue
         except ValueError:
             continue
-        if os.path.basename(path) not in ("hi.usda", "lo.usda"):
+        if os.path.basename(path) != uu.MODEL_FILE:
             continue
         component_path = os.path.relpath(
             os.path.dirname(path),

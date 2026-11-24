@@ -32,7 +32,7 @@ def _traced_components(stage):
     photo build now see exactly the beam the user sees, and skip reading every
     mesh (0.5 s of a 0.56 s placement on a 47-part bench).
     """
-    return {c["name"]: c for c in _project_components(stage, "lo", transparent_points_only=True)}
+    return {c["name"]: c for c in _project_components(stage, transparent_points_only=True)}
 
 def _snap_onto_beam(stage, comp_name, x, y):
     """Centre a just-dropped optic on the beam leg it was dropped on.
@@ -98,7 +98,7 @@ def _fold(stage, comp, turn):
 def fold_beam(name, comp):
     """Turn a mirror or beamsplitter so the beam leaves it to the left or right.
 
-    Body: {turn: "left" | "right", renderMode?}. "Left" is counter-clockwise
+    Body: {turn: "left" | "right"}. "Left" is counter-clockwise
     seen from above, relative to the way the beam is travelling when it
     arrives. The part's active surface stays on the incoming beam; only its
     rotation changes, so nothing else on the bench moves (parts downstream
@@ -110,9 +110,6 @@ def fold_beam(name, comp):
     turn = body.get("turn")
     if turn not in beam_first.TURNS:
         abort(400, "turn must be left or right")
-    render_mode = body.get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
 
     stage = Usd.Stage.Open(scene.project_setup(name))
     error = _fold(stage, comp, turn)
@@ -120,7 +117,7 @@ def fold_beam(name, comp):
         abort(*error)
     stage.GetRootLayer().Save()
 
-    payload = _move_payload(name, stage, render_mode)
+    payload = _move_payload(name, stage)
     payload["ok"] = True
     return jsonify(payload)
 
@@ -138,9 +135,6 @@ def switch_lasers(name):
         abort(400, "on must be true or false")
     on = body["on"]
 
-    render_mode = body.get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
 
     names = body.get("names")
     if names is not None and (
@@ -165,8 +159,8 @@ def switch_lasers(name):
     stage.GetRootLayer().Save()
 
     # Only an attribute and the beam change: the light move payload, which
-    # carries laserOn, not the full scene (~9 s in hi mode on a large bench).
-    payload = _move_payload(name, stage, render_mode)
+    # carries laserOn, not the full scene (~9 s with full CAD models on a large bench).
+    payload = _move_payload(name, stage)
     payload["ok"] = True
     payload["switched"] = switched
     return jsonify(payload)
@@ -186,9 +180,6 @@ def set_beam_shape(name):
     if not isinstance(key, str) or not key.strip():
         abort(400, "key must be a non-empty string")
 
-    render_mode = body.get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
 
     setup = scene.project_setup(name)
     stage = Usd.Stage.Open(setup)
@@ -245,7 +236,7 @@ def set_beam_shape(name):
 
     # A shape edit is a drag on the width bars, and changes only the beam --
     # the same subset a move does, so it takes the same light payload.
-    payload = _move_payload(name, stage, render_mode)
+    payload = _move_payload(name, stage)
     payload["ok"] = True
     return jsonify(payload)
 

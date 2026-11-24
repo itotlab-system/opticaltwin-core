@@ -5,7 +5,6 @@ import type { Component, ComponentGroup, PinAnnotation, ProjectData } from "../t
 type Shortcuts = {
   current: string | null;
   data: ProjectData | null;
-  renderMode: "lo" | "hi";
   t: (key: string, vars?: Record<string, string | number>) => string;
   components: Component[];
   groups: ComponentGroup[];
@@ -131,5 +130,5 @@ export function useKeyboardShortcuts(k: Shortcuts) {
     return () => window.removeEventListener("keydown", onKey);
     // The same dependency list the effect had inline in App.tsx.
   }, [k.current, k.selection, k.selectedPinId, k.pins, k.t, k.isPlacing, k.components,
-      k.renderMode, k.groups, k.enteredGroupId, k.clipboard, k.data, k.calloutMode]);
+      k.groups, k.enteredGroupId, k.clipboard, k.data, k.calloutMode]);
 }

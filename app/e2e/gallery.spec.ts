@@ -30,8 +30,13 @@ test.describe("project gallery", () => {
       timeout: 120_000,
     });
 
-    const src = await page.locator(".card-thumb img").first().getAttribute("src");
-    expect(src?.startsWith("data:image/jpeg")).toBe(true);
+    // Each picture is either the saved PNG from the server (taken in the
+    // editor, see thumbnail.spec.ts) or, for a bench without one, drawn here.
+    for (const src of await page.locator(".card-thumb img").evaluateAll(
+      (imgs) => imgs.map((img) => img.getAttribute("src") ?? ""),
+    )) {
+      expect(src.startsWith("data:image/jpeg") || /\/thumbnail\.png\?v=/.test(src)).toBe(true);
+    }
   });
 
   test("reuses the cached picture instead of redrawing", async ({ page }) => {

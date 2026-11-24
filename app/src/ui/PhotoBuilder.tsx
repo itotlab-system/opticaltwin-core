@@ -61,11 +61,10 @@ function partName(p: PhotoPart, t: (k: string) => string): string {
 }
 
 export default function PhotoBuilder({
-  project, data, renderMode, onClose, onBuilt, onBoardModel,
+  project, data, onClose, onBuilt, onBoardModel,
 }: {
   project: string;
   data: ProjectData;
-  renderMode: string;
   onClose: () => void;
   onBuilt: (payload: ProjectData) => void;
   onBoardModel: (asset: string) => Promise<void>;
@@ -344,7 +343,7 @@ export default function PhotoBuilder({
             : { role: "mirror", label: t("photo_auto_mirror") },
           x: turn.at[0], y: turn.at[1], dir: turn.outDir });
       });
-      const payload = await api.buildFromPhoto(project, beamHeight, out, renderMode);
+      const payload = await api.buildFromPhoto(project, beamHeight, out);
       update({ built: payload.built });
       onBuilt(payload);
       setMessage(t("photo_built", { n: Object.keys(payload.built).length }));

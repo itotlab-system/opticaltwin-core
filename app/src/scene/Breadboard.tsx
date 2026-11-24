@@ -116,8 +116,9 @@ export default function Breadboard({
       )}
 
       {(
-        (!board.model || board.model.renderMode === "lo")
-        && board.holes.length > 0
+        // A CAD board model has its own holes; only the generated board
+        // needs them drawn.
+        !board.model && board.holes.length > 0
       ) && (
         <Instances
           key={`${board.sizeX}x${board.sizeY}`}

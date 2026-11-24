@@ -37,7 +37,7 @@ async function selectPin(page: Page) {
 }
 
 async function savedPins(page: Page, api: string, project: string) {
-  const r = await page.request.get(`${api}/api/projects/${project}?renderMode=lo`);
+  const r = await page.request.get(`${api}/api/projects/${project}`);
   return ((await r.json()).pins ?? []) as { id: string }[];
 }
 

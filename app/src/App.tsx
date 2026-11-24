@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import Viewport, {
   type TransformMode,
+  type CaptureOptions,
   type ViewportHandle,
 } from "./scene/Viewport";
 import Outliner from "./ui/Outliner";
@@ -20,6 +21,7 @@ import FigureExportDialog, {
 } from "./ui/FigureExportDialog";
 import { AnchorStore } from "./scene/anchors";
 import { composeFigure } from "./figureExport";
+import { CARD_HEIGHT, CARD_WIDTH, toCardPicture } from "./galleryThumbnail";
 import { visibleCallouts } from "./callouts";
 import { useSettings } from "./settings";
 import { api } from "./api";
@@ -80,7 +82,6 @@ export default function App() {
   const [isPlacing, setIsPlacing] = useState(false);
   const [browsingParts, setBrowsingParts] = useState(false);
   const [status, setStatus] = useState("");
-  const [renderMode, setRenderMode] = useState<"lo" | "hi">("lo");
   const { busy, busyVisible, runBusy } = useBusy();
   // The "build from a photo" screen, over the editor.
   const [photoOpen, setPhotoOpen] = useState(false);
@@ -156,7 +157,6 @@ export default function App() {
       setSelectedPinId(null);
       setCalloutMode(false);
       setSelectedCalloutId(null);
-      setRenderMode("lo");
 
       // Every time the gallery is shown, not only on first load: coming back
       // from a bench, its card must show the edit just made (time, who, and
@@ -166,10 +166,9 @@ export default function App() {
     }
 
     (async () => {
-      setRenderMode("lo");
       setStatus(t("loading"));
       setViewportReady(false);
-      const d = await runBusy(t("busy_opening"), () => api.getProject(current, "lo"));
+      const d = await runBusy(t("busy_opening"), () => api.getProject(current));
       setData(d);
       setAsset(d.library[0] ?? "");
       setStatus(t("components_n", { n: d.components.length }));
@@ -189,45 +188,79 @@ export default function App() {
     setCurrent(name);
   }
 
-  async function toggleRenderMode() {
-    if (!current || busy) return;
-    const next = renderMode === "lo" ? "hi" : "lo";
-    const label = next === "hi" ? t("detail_full") : t("detail_simple");
-    setIsPlacing(false);
-    setStatus(t("busy_detail", { mode: label }));
+  /** Capture the viewport with the selection gizmo/guides hidden, then restore it. */
+  async function captureClean(options: CaptureOptions) {
+    const prevSelection = selection;
+    const prevSelectedPinId = selectedPinId;
+    const prevCalloutId = selectedCalloutId;
+    setSelection([]);
+    setSelectedPinId(null);
+    setSelectedCalloutId(null);
     try {
-      const d = await runBusy(t("busy_detail", { mode: label }),
-                              () => api.getProject(current, next));
-      setRenderMode(next);
-      setData(d);
-      // A detail swap can drop parts that have no model at that level.
-      const present = new Set(d.components.map((c) => c.name));
-      setSelection((prev) => prev.filter((name) => present.has(name)));
-      setStatus(`${label} · ${t("components_n", { n: d.components.length })}`);
-    } catch {
-      setStatus(t("busy_detail_failed", { mode: label }));
+      return await viewportRef.current?.captureSnapshot(options);
+    } finally {
+      setSelection(prevSelection);
+      setSelectedPinId(prevSelectedPinId);
+      setSelectedCalloutId(prevCalloutId);
     }
+  }
+
+  // The gallery card's picture: the bench as it looks right now, uploaded once so the gallery shows a file instead of every viewer's browser
+  // rendering every bench (backend/thumbnails.py).
+  /** Take and upload the card picture; true once it is on the server. */
+  async function saveThumbnail(): Promise<boolean> {
+    if (!current) return false;
+    // The server fingerprints the layer as it is when the picture lands; an
+    // unsaved move would make a brand-new picture count as outdated.
+    await flushPendingSave();
+    const frame = await captureClean({
+      scale: 1, background: "current", hidePins: true,
+      frameForCard: CARD_WIDTH / CARD_HEIGHT,
+    });
+    if (!frame) return false;
+    await api.uploadThumbnail(current, await toCardPicture(frame.blob));
+    return true;
+  }
+
+  async function handleThumbnail() {
+    setExporting(true);
+    try {
+      if (!(await saveThumbnail())) return;
+      setFigureExport(null);
+      setStatus(t("thumbnail_saved"));
+    } catch {
+      setStatus(t("thumbnail_failed"));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // Back to the gallery. Leaving a bench refreshes its card picture when there
+  // is none or the bench has changed since it was taken — the models are
+  // already on screen, so this costs one frame. Leaving must never be blocked
+  // by a failed picture.
+  async function leaveBench() {
+    if (current && components.length > 0) {
+      try {
+        const { projects } = await api.listProjects();
+        const card = projects.find((p) => p.name === current)?.thumbnail;
+        if (!card?.current) await runBusy(t("busy_thumbnail"), saveThumbnail);
+      } catch {
+        // The card simply stays as it was.
+      }
+    }
+    setCurrent(null);
   }
 
   async function handleSnapshot(settings: FigureExportSettings) {
     if (!current) return;
     setExporting(true);
     try {
-      // Hide the selection gizmo/guides for a clean shot, then restore it.
-      const prevSelection = selection;
-      const prevSelectedPinId = selectedPinId;
-      const prevCalloutId = selectedCalloutId;
-      setSelection([]);
-      setSelectedPinId(null);
-      setSelectedCalloutId(null);
-      const frame = await viewportRef.current?.captureSnapshot({
+      const frame = await captureClean({
         scale: settings.scale,
         background: settings.background,
         hidePins: settings.hidePins,
       });
-      setSelection(prevSelection);
-      setSelectedPinId(prevSelectedPinId);
-      setSelectedCalloutId(prevCalloutId);
 
       if (!frame) return;
       // The projected anchors are read *after* the capture, from the same store
@@ -276,7 +309,7 @@ export default function App() {
     setStatus(next ? t("laser_on") : t("laser_off"));
     // A light payload (transforms + beam): merged, so no mesh is rebuilt.
     const updated = await runBusy(t("busy_laser"),
-      () => api.switchLasers(current, next, undefined, renderMode));
+      () => api.switchLasers(current, next));
     await applyMove(updated);
     // With the source off there is no leg left to edit.
     if (!next) setSelectedSegment(null);
@@ -333,7 +366,7 @@ export default function App() {
 
     if (needsFullReload(prev, patch)) {
       if (!current) return null;
-      const fresh = await api.getProject(current, renderMode);
+      const fresh = await api.getProject(current);
       dataRef.current = fresh;
       setData(fresh);
       return fresh;
@@ -356,7 +389,6 @@ export default function App() {
         rotX: comp.rotX,
         rotY: comp.rotY,
         rotZ: comp.rotZ,
-        renderMode,
       });
 
       await applyMove(updated);
@@ -393,7 +425,7 @@ export default function App() {
     setStatus(t("model_saving", { name: selectedComp.name }));
     try {
       const updated = await api.updateComponentModel(
-        current, selectedComp.name, asset, renderMode
+        current, selectedComp.name, asset
       );
       setData(updated);
       setStatus(t("model_saved", { name: selectedComp.name }));
@@ -408,7 +440,7 @@ export default function App() {
     const name = asset.split("/").pop()?.replace(/-Step\.usda$/, "") ?? asset;
     setStatus(t("board_model_saving", { name }));
     try {
-      const updated = await api.updateBoardModel(current, asset, renderMode);
+      const updated = await api.updateBoardModel(current, asset);
       setData(updated);
       setStatus(t("board_model_saved", { name }));
     } catch {
@@ -482,7 +514,7 @@ export default function App() {
         waistAt: shape.waistAt,
         waistW: shape.waistW,
         lengthMm: shape.lengthMm,
-      }, renderMode);
+      });
       const merged = await applyMove(updated);
       setSelectedSegment(
         (merged ?? updated).beam.find((s) => s.key === key) ?? null
@@ -498,7 +530,7 @@ export default function App() {
 
     scheduleSave(async () => {
       setStatus(t("saving_n", { n: rounded.length }));
-      const updated = await api.updateComponents(current, rounded, renderMode);
+      const updated = await api.updateComponents(current, rounded);
       await applyMove(updated);
       setStatus(t("saved_n", { n: rounded.length }));
 
@@ -597,7 +629,7 @@ export default function App() {
     if (!current) return;
     await flushPendingSave();          // never rewind past an unsaved move
     await queueHistoryStep(async () => {
-      const d = await runBusy(t("busy_undo"), () => api.undo(current, renderMode));
+      const d = await runBusy(t("busy_undo"), () => api.undo(current));
       applyHistoryStep(d, d.stepped ? t("undone") : t("undo_empty"));
     });
   }
@@ -606,7 +638,7 @@ export default function App() {
     if (!current) return;
     await flushPendingSave();
     await queueHistoryStep(async () => {
-      const d = await runBusy(t("busy_redo"), () => api.redo(current, renderMode));
+      const d = await runBusy(t("busy_redo"), () => api.redo(current));
       applyHistoryStep(d, d.stepped ? t("redone") : t("redo_empty"));
     });
   }
@@ -632,7 +664,7 @@ export default function App() {
       // One breadboard hole per step, so copies stay on the grid.
       const offset = (data?.board.spacing ?? 25) * step;
       const r = await api.duplicateComponents(
-        current, names, offset, offset, renderMode, from
+        current, names, offset, offset, from
       );
       setData(r);
       setEnteredGroupId(null);
@@ -698,7 +730,7 @@ export default function App() {
     if (!current) return;
     await flushPendingSave();
     try {
-      await applyMove(await api.foldBeam(current, name, turn, renderMode));
+      await applyMove(await api.foldBeam(current, name, turn));
       setStatus(t("folded", { name }));
     } catch {
       setStatus(t("fold_failed"));
@@ -711,7 +743,7 @@ export default function App() {
     // The answer carries the new part itself; merging it keeps every other
     // mesh as it is instead of re-fetching (and rebuilding) the whole bench.
     const r = await runBusy(t("busy_placing"),
-      () => api.addComponent(current, asset, point.x, point.y, snap, renderMode));
+      () => api.addComponent(current, asset, point.x, point.y, snap));
     const d = await applyMove(r);
     setSelection([r.name]);
     setStatus(r.snapped
@@ -735,7 +767,7 @@ export default function App() {
     setSelection([]);
     setEnteredGroupId(null);
 
-    const d = await api.getProject(current, renderMode);
+    const d = await api.getProject(current);
     setData(d);
   }
 
@@ -748,12 +780,12 @@ export default function App() {
 
     await api.pinBeamNode(current, segment, node, position);
 
-    const d = await api.getProject(current, renderMode);
+    const d = await api.getProject(current);
     setData(d);
   }
 
   useKeyboardShortcuts({
-    current, data, renderMode, t, components, groups,
+    current, data, t, components, groups,
     selection, setSelection, enteredGroupId, setEnteredGroupId, clipboard,
     isPlacing, setIsPlacing, setStatus,
     calloutMode, setCalloutMode, setSelectedCalloutId,
@@ -795,7 +827,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="toolbar">
-        <button className="backbtn" onClick={() => setCurrent(null)}>
+        <button className="backbtn" onClick={() => void leaveBench()}>
           {t("back_projects")}
         </button>
 
@@ -854,31 +886,6 @@ export default function App() {
         </div>
 
         <span className="tb-sep" aria-hidden="true" />
-
-        {/* How much detail every part is drawn with. Named for what the user
-            sees ("Simple" stand-in shapes vs the "Detailed" real CAD), not for
-            the mechanism: "LOD: LO/HI" meant nothing to people who don't make
-            3D software. The tooltip says what Detailed costs. */}
-        <div className="seg-toggle" role="group" aria-label={t("detail_group")} title={t("detail_hint")}>
-          <button
-            type="button"
-            className={renderMode === "lo" ? "active" : ""}
-            aria-pressed={renderMode === "lo"}
-            disabled={busy !== null}
-            onClick={() => { if (renderMode !== "lo") void toggleRenderMode(); }}
-          >
-            {t("detail_simple")}
-          </button>
-          <button
-            type="button"
-            className={renderMode === "hi" ? "active" : ""}
-            aria-pressed={renderMode === "hi"}
-            disabled={busy !== null}
-            onClick={() => { if (renderMode !== "hi") void toggleRenderMode(); }}
-          >
-            {t("detail_full")}
-          </button>
-        </div>
 
         {/* The actual laser switch. Off means the source emits nothing, so
             there is no beam anywhere and nothing to shape; on brings it back
@@ -1193,14 +1200,13 @@ export default function App() {
         <PhotoBuilder
           project={current}
           data={data}
-          renderMode={renderMode}
           onClose={() => setPhotoOpen(false)}
           onBuilt={(payload) => {
             setData(payload); setSelection([]);
             setStatus(t("components_n", { n: payload.components.length }));
           }}
           onBoardModel={async (asset) => {
-            setData(await api.updateBoardModel(current, asset, renderMode));
+            setData(await api.updateBoardModel(current, asset));
           }}
         />
       )}
@@ -1214,6 +1220,7 @@ export default function App() {
             void handleSnapshot(settings);
           }}
           onClose={() => setFigureExport(null)}
+          onThumbnail={() => void handleThumbnail()}
         />
       )}
 

@@ -70,7 +70,10 @@ def _library_photo_mtime(component_name):
         return None
 
 def _library_previews():
-    """CAD catalogue geometry used by the placement ghost before insertion.
+    """Every catalogue part's metadata (type, dims, pose, base offset, beam
+    physics, photo), shipped in the project payload. No geometry: each part's
+    one model is a full CAD mesh, so the placement ghost and the part browser
+    fetch it per part from `/api/library/preview/<asset>`.
 
     Cached: this is the same for every project and changes only when the
     catalogue does, but it was rebuilt on every request — including every
@@ -139,19 +142,17 @@ def _library_base_offset_mm(asset):
     preview = _library_previews().get(asset) or {}
     return float(preview.get("baseOffsetZ") or 0.0)
 
-def _build_library_preview(asset, render_mode="lo"):
+def _build_library_preview(asset, with_geometry=False):
     """One catalogue part, posed at the origin, as the client draws components.
 
-    `render_mode` is "lo" for the payload-wide catalogue (the placement ghost
-    only needs a silhouette) and "hi" for a single part fetched on demand by the
-    part browser: a lo asset is a bounding-box stand-in, so every post holder
-    would otherwise be the same anonymous block on its tile.
+    `with_geometry` is False for the payload-wide catalogue and True for the
+    single part fetched on demand (part-browser tile, placement ghost).
     """
     cad_assets = ol.cad_library_assets(config.LIB_DIR)
     component_name = uu.get_component_name(asset)
-    path = uu.get_component_usda_path(config.LIB_DIR, component_name, render_mode)
+    path = uu.get_component_usda_path(config.LIB_DIR, component_name)
     if not os.path.exists(path):
-        path = uu.get_component_usda_path(config.LIB_DIR, component_name)
+        return None
     stage = Usd.Stage.Open(path)
     if stage is None or not stage.GetDefaultPrim().IsValid():
         return None
@@ -171,7 +172,6 @@ def _build_library_preview(asset, render_mode="lo"):
         "attrs": _optics_attrs(root),
         "asset": asset,
         "cadDerived": cad_derived,
-        "renderMode": render_mode,
     }
     photo_mtime = _library_photo_mtime(component_name)
     if photo_mtime is not None:
@@ -179,11 +179,20 @@ def _build_library_preview(asset, render_mode="lo"):
         component["photo"] = (
             f"/api/library/photo/{component_name}?v={int(photo_mtime)}"
         )
-    # The hand-built Low_model parts are drawn procedurally by the client
+    # The generated (Generic) parts are drawn procedurally by the client
     # from their `optics:` dims, so shipping their gprims would be dead
     # weight in a payload that already carries every CAD mesh.
-    meshes = components._component_meshes(stage, root) if cad_derived else []
-    primitives = _component_primitives(stage, root) if cad_derived else []
+    # Without geometry, the transparent points alone are still read: the beam
+    # physics (optical bounds) is measured from them.
+    meshes = (
+        components._component_meshes(
+            stage, root, transparent_points_only=not with_geometry
+        )
+        if cad_derived else []
+    )
+    primitives = (
+        _component_primitives(stage, root) if cad_derived and with_geometry else []
+    )
     if meshes:
         component["meshes"] = meshes
     if primitives:
@@ -191,18 +200,20 @@ def _build_library_preview(asset, render_mode="lo"):
     component.update(_component_model_pose(stage, root))
     component["baseOffsetZ"] = _asset_base_offset_mm(stage, root)
     component["physics"] = _beam_physics_metadata(component)
+    if not with_geometry:
+        component.pop("meshes", None)
     return component
 
 @bp.get("/api/library/preview/<path:asset>")
 def library_preview(asset):
     """One catalogue part's geometry, for a part-browser thumbnail.
 
-    Deliberately one asset per request rather than a hi-res catalogue in the
+    Deliberately one asset per request rather than a full-mesh catalogue in the
     project payload: the browser draws each tile once and keeps the picture, so
-    the several hundred kB of a hi asset is paid once and thrown away, instead
+    the several hundred kB of a CAD asset is paid once and thrown away, instead
     of being carried by every project load.
 
-    Served gzipped and cached. A hi asset is ~940 kB of vertex floats as JSON
+    Served gzipped and cached. A CAD asset is ~940 kB of vertex floats as JSON
     and the catalogue is 86 of them, so filling the part browser moved ~81 MB
     over the wire — which was the whole reason it took minutes, not the drawing.
     Float text compresses ~6x, and the bytes are identical for every user and
@@ -210,8 +221,7 @@ def library_preview(asset):
     """
     if asset not in ol.component_library_assets(config.LIB_DIR):
         abort(404)
-    render_mode = "hi" if request.args.get("renderMode") == "hi" else "lo"
-    body = _library_preview_body(asset, render_mode)
+    body = _library_preview_body(asset)
     if body is None:
         abort(404)
     payload, compressed = body
@@ -229,13 +239,13 @@ def library_preview(asset):
     response.headers["Vary"] = "Accept-Encoding"
     return response
 
-# (asset, render_mode) -> (gzipped json, True). Bounded by the catalogue size;
-# ~13 MB compressed for all 86 hi assets, against the ~81 MB it saves sending.
+# asset -> (gzipped json, True). Bounded by the catalogue size; ~13 MB
+# compressed for all 86 CAD assets, against the ~81 MB it saves sending.
 _PREVIEW_BODY_CACHE = {}
 
 _PREVIEW_BODY_KEY = None
 
-def _library_preview_body(asset, render_mode):
+def _library_preview_body(asset):
     """The response bytes for one preview, gzipped, built at most once."""
     global _PREVIEW_BODY_CACHE, _PREVIEW_BODY_KEY
 
@@ -245,16 +255,16 @@ def _library_preview_body(asset, render_mode):
         _PREVIEW_BODY_CACHE = {}
         _PREVIEW_BODY_KEY = key
 
-    entry = _PREVIEW_BODY_CACHE.get((asset, render_mode))
+    entry = _PREVIEW_BODY_CACHE.get(asset)
     if entry is None:
-        component = _build_library_preview(asset, render_mode)
+        component = _build_library_preview(asset, with_geometry=True)
         if component is None:
             return None
         raw = json.dumps({"component": component}).encode("utf-8")
         # Level 6 is ~44 ms for the largest asset and within a few percent of
         # the ratio at 9; the difference is not worth the CPU on a lab server.
         entry = (gzip.compress(raw, 6), True)
-        _PREVIEW_BODY_CACHE[(asset, render_mode)] = entry
+        _PREVIEW_BODY_CACHE[asset] = entry
     return entry
 
 @bp.get("/api/library/photo/<path:component>")

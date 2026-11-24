@@ -87,7 +87,7 @@ def _load_asset_arrays(geometry_path, transparent_points_only):
     )
 
 
-def _read_asset_data(geometry_path, render_mode, transparent_points_only, request_cache):
+def _read_asset_data(geometry_path, transparent_points_only, request_cache):
     if not os.path.exists(geometry_path):
         return None
     geometry_stat = os.stat(geometry_path)
@@ -95,7 +95,6 @@ def _read_asset_data(geometry_path, render_mode, transparent_points_only, reques
         os.path.realpath(geometry_path),
         geometry_stat.st_mtime_ns,
         geometry_stat.st_size,
-        render_mode,
         transparent_points_only,
     )
     if key not in request_cache:
@@ -107,10 +106,8 @@ def _read_asset_data(geometry_path, render_mode, transparent_points_only, reques
     return request_cache[key]
 
 
-def _project_components(stage, render_mode="lo", include_fixed=False, *,
+def _project_components(stage, include_fixed=False, *,
                         transparent_points_only=False, only_names=None):
-    if render_mode not in ("hi", "lo"):
-        raise ValueError("render_mode must be 'hi' or 'lo'")
     comps = []
     cad_assets = ol.cad_library_assets(config.LIB_DIR)
     asset_data_cache = {}
@@ -123,25 +120,16 @@ def _project_components(stage, render_mode="lo", include_fixed=False, *,
         placement_attrs = _optics_attrs(prim)
 
         asset_data = None
-        # USD composition: the placement prim's xformOpOrder would mask rotations authored on the lo.usda root.
-        if asset and (render_mode == "hi" or asset in cad_assets):
-            geometry_path = uu.get_component_usda_path(
-                config.LIB_DIR, uu.get_component_name(asset), render_mode
-            )
+        # Read from the part's own model file, not the composed stage: the
+        # placement prim's xformOpOrder would mask rotations authored on the
+        # model's root.
+        if asset in cad_assets:
             asset_data = _read_asset_data(
-                geometry_path, render_mode, transparent_points_only, asset_data_cache
+                uu.get_component_usda_path(config.LIB_DIR, asset),
+                transparent_points_only, asset_data_cache,
             )
-        if render_mode == "hi" and asset_data is None and asset in cad_assets:
-            # A CAD part whose detailed model is missing: its simple one.
-            asset_data = _read_asset_data(
-                uu.get_component_usda_path(
-                    config.LIB_DIR, uu.get_component_name(asset), "lo"
-                ),
-                "lo", transparent_points_only, asset_data_cache,
-            )
-        # Anything else without a detailed model -- a generated library part, a
-        # placeholder -- has only the one, and is drawn from the stage below.
-        # "Detailed" means the best model a part has, never that the part goes.
+        # A generated (Generic) part or a placeholder is drawn from the stage
+        # below: the client builds those procedurally from their optics: dims.
 
         if asset_data is not None:
             model_pose = asset_data.model_pose
@@ -164,8 +152,7 @@ def _project_components(stage, render_mode="lo", include_fixed=False, *,
                          rotX=round(rot_x, 3), rotY=round(rot_y, 3),
                          rotZ=round(rot_z, 3), attrs=_optics_attrs(prim),
                          asset=asset,
-                         cadDerived=asset in cad_assets,
-                         renderMode=render_mode)
+                         cadDerived=asset in cad_assets)
         component["attrs"] = attrs
         for key in PLACEMENT_ATTR_KEYS:
             if key in placement_attrs:
@@ -196,9 +183,9 @@ def _resolved_project_beam(stage, comps_by_name, beam_path):
         return beam
     return _beam_segments(stage) + _laser_emission_segments(comps_by_name)
 
-def _project_payload(name, stage, render_mode="lo"):
+def _project_payload(name, stage):
     catalog._sync_cad_catalog()
-    all_components = _project_components(stage, render_mode, include_fixed=True)
+    all_components = _project_components(stage, include_fixed=True)
     editable_names = {prim.GetName() for prim in _component_prims(stage)}
     comps = [c for c in all_components if c["name"] in editable_names]
     board_model = next(
@@ -207,12 +194,7 @@ def _project_payload(name, stage, render_mode="lo"):
         None,
     )
     beam_path = _beam_path(stage)
-    physics_comps = (
-        comps
-        if render_mode == "lo"
-        else _project_components(stage, "lo")
-    )
-    comps_by_name = {c["name"]: c for c in physics_comps}
+    comps_by_name = {c["name"]: c for c in comps}
     return dict(name=name, components=comps,
                 beam=_apply_beam_shape(
                     _resolved_project_beam(stage, comps_by_name, beam_path),
@@ -226,7 +208,6 @@ def _project_payload(name, stage, render_mode="lo"):
                 ],
                 library=ol.component_library_assets(config.LIB_DIR),
                 libraryPreviews=library._library_previews(),
-                renderMode=render_mode,
                 pins=_pins(stage),
                 callouts=_callouts(stage),
                 groups=_groups(stage),
@@ -237,7 +218,6 @@ class MovePayload(TypedDict):
     partial: Literal[True]
     components: list[dict]
     beam: list[dict]
-    renderMode: Literal["hi", "lo"]
     canUndo: NotRequired[bool]
     canRedo: NotRequired[bool]
     ok: NotRequired[bool]
@@ -245,8 +225,8 @@ class MovePayload(TypedDict):
     beamPath: NotRequired[list]
 
 
-def _move_payload(name, stage, render_mode="lo") -> MovePayload:
-    comps = _project_components(stage, "lo", transparent_points_only=True)
+def _move_payload(name, stage) -> MovePayload:
+    comps = _project_components(stage, transparent_points_only=True)
     beam_path = _beam_path(stage)
     comps_by_name = {c["name"]: c for c in comps}
     return MovePayload(
@@ -266,6 +246,5 @@ def _move_payload(name, stage, render_mode="lo") -> MovePayload:
             _resolved_project_beam(stage, comps_by_name, beam_path),
             _beam_shape(stage),
         ),
-        renderMode=render_mode,
         **_history_state(name),
     )

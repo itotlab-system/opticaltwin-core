@@ -264,16 +264,13 @@ def _build_from_photo(stage, specs, beam_height):
 def build_from_photo(name):
     """Turn the parts marked on the photo into the bench.
 
-    Body: {beamHeight, parts: [{id, x, y, dir?, asset | generic}], renderMode?}
+    Body: {beamHeight, parts: [{id, x, y, dir?, asset | generic}]}
     with x/y already in board millimetres (the browser owns the photo-to-board
     mapping, since it draws the predicted hole grid with it). Rebuilding first
     removes what the previous build placed, so the photo stays the source and
     the build can be repeated as the labels are corrected. One undo step.
     """
     body = request.get_json(force=True)
-    render_mode = body.get("renderMode", "lo")
-    if render_mode not in ("hi", "lo"):
-        abort(400, "renderMode must be hi or lo")
     try:
         beam_height = float(body.get("beamHeight", DEFAULT_BEAM_HEIGHT_MM))
     except (TypeError, ValueError):
@@ -306,7 +303,7 @@ def build_from_photo(name):
 
     labels["built"] = built
     _write_photo_labels(name, labels)
-    payload = _project_payload(name, stage, render_mode)
+    payload = _project_payload(name, stage)
     payload["ok"] = True
     payload["built"] = built
     return jsonify(payload)

@@ -345,7 +345,7 @@ class BeamTracerTests(unittest.TestCase):
 
 
 class RealComponentIntegrationTests(unittest.TestCase):
-    def _placed_components(self, placements, render_mode="lo"):
+    def _placed_components(self, placements):
         # These cases reference real assets out of components/, which is
         # generated rather than checked in -- and the CAD-derived ones
         # (PL251, EXULUS-HD2HP, BSW10R ...) only exist once someone has
@@ -355,7 +355,7 @@ class RealComponentIntegrationTests(unittest.TestCase):
         # empty prim, which surfaces as a confusing IndexError further down.
         missing = sorted({
             asset for _, asset, *_ in placements
-            if not os.path.exists(os.path.join(config.LIB_DIR, asset, "lo.usda"))
+            if not os.path.exists(os.path.join(config.LIB_DIR, asset, "model.usda"))
         })
         if missing:
             self.skipTest(
@@ -369,18 +369,18 @@ class RealComponentIntegrationTests(unittest.TestCase):
         for name, asset, x, y, rotation in placements:
             prim = stage.DefinePrim(f"/Setup/{name}", "Xform")
             prim.GetReferences().AddReference(os.path.join(
-                config.LIB_DIR, asset, "lo.usda"
+                config.LIB_DIR, asset, "model.usda"
             ))
             xform = UsdGeom.Xformable(prim)
             xform.AddTranslateOp().Set(Gf.Vec3d(x, y, 0))
             if rotation:
                 xform.AddRotateZOp().Set(rotation)
-        return payload._project_components(stage, render_mode)
+        return payload._project_components(stage)
 
     def test_real_standard_laser_and_mirror_assets_reflect(self):
         components = self._placed_components([
-            ("Laser", "Low_model/laser_fiber", 0, 0, 0),
-            ("Mirror", "Low_model/mirror_1in", 100, 0, 45),
+            ("Laser", "Generic/laser_fiber", 0, 0, 0),
+            ("Mirror", "Generic/mirror_1in", 100, 0, 45),
         ])
 
         segments = payload._resolved_project_beam(
@@ -393,20 +393,16 @@ class RealComponentIntegrationTests(unittest.TestCase):
 
     def test_mirror_geometry_and_placement_origin_are_thickness_centered(self):
         standard = self._placed_components([
-            ("Mirror", "Low_model/mirror_1in", 100, 0, 0),
+            ("Mirror", "Generic/mirror_1in", 100, 0, 0),
         ])[0]
-        cad_lo = self._placed_components([
+        cad = self._placed_components([
             ("Mirror", "Mirror/BBSQ2-E02-Step", 100, 0, 0),
         ])[0]
-        cad_hi = self._placed_components([
-            ("Mirror", "Mirror/BBSQ2-E02-Step", 100, 0, 0),
-        ], render_mode="hi")[0]
 
         self.assertEqual(standard["primitives"][0]["matrix"][12], 0.0)
-        self.assertEqual(cad_lo["primitives"][0]["matrix"][12], 0.0)
         xs = [
             point[0]
-            for mesh in cad_hi["meshes"]
+            for mesh in cad["meshes"]
             for point in mesh["points"]
         ]
         self.assertAlmostEqual(max(xs), 3.0, places=3)
@@ -448,7 +444,7 @@ class RealComponentIntegrationTests(unittest.TestCase):
 
     def test_real_cad_beamsplitter_asset_splits(self):
         components = self._placed_components([
-            ("Laser", "Low_model/laser_fiber", 0, 0, 0),
+            ("Laser", "Generic/laser_fiber", 0, 0, 0),
             ("Splitter", "Beam Splitter/BSW10R-Step", 100, 0, 0),
         ])
 
@@ -465,11 +461,11 @@ class RealComponentIntegrationTests(unittest.TestCase):
 
     def test_real_cad_slm_screen_and_red_housing_are_distinct(self):
         screen_components = self._placed_components([
-            ("Laser", "Low_model/laser_fiber", -100, 0, 0),
+            ("Laser", "Generic/laser_fiber", -100, 0, 0),
             ("SLM", "SLM/EXULUS-HD2HP-Step", 0, 0, 0),
         ])
         housing_components = self._placed_components([
-            ("Laser", "Low_model/laser_fiber", -100, 30, 0),
+            ("Laser", "Generic/laser_fiber", -100, 30, 0),
             ("SLM", "SLM/EXULUS-HD2HP-Step", 0, 0, 0),
         ])
 

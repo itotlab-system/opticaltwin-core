@@ -65,8 +65,8 @@ def test_vectorised_meshes_match_per_point_reference():
     assert type(got[0]["indices"][0]) is int
 
 
-def test_hi_asset_is_read_once_across_requests(tmp_path, monkeypatch):
-    asset = tmp_path / "hi.usda"
+def test_model_is_read_once_across_requests(tmp_path, monkeypatch):
+    asset = tmp_path / "model.usda"
     stage = Usd.Stage.CreateNew(str(asset))
     root = UsdGeom.Xform.Define(stage, "/Asset")
     stage.SetDefaultPrim(root.GetPrim())
@@ -94,8 +94,8 @@ def test_hi_asset_is_read_once_across_requests(tmp_path, monkeypatch):
         return original(stage, prim, transparent_points_only=transparent_points_only)
 
     monkeypatch.setattr(components, "_component_mesh_arrays", counting)
-    first = payload._project_components(project, "hi")
-    second = payload._project_components(project, "hi")
+    first = payload._project_components(project)
+    second = payload._project_components(project)
 
     assert reads == [False]
     assert first[0]["meshes"] == second[0]["meshes"]
@@ -107,7 +107,7 @@ def test_hi_asset_is_read_once_across_requests(tmp_path, monkeypatch):
     stage.GetRootLayer().Save()
     before = os.stat(asset).st_mtime_ns
     os.utime(asset, ns=(before + 1_000_000_000, before + 1_000_000_000))
-    third = payload._project_components(project, "hi")
+    third = payload._project_components(project)
     assert reads == [False, False]
     assert third[0]["meshes"][0]["points"][1] == [2.0, 0.0, 0.0]
 

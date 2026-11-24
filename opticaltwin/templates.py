@@ -4,7 +4,7 @@ opticaltwin/templates.py  --  named optical-setup recipes
 Each recipe builds a setup into an existing (stage, root) using a `ref` callable
 that maps a component filename -> a path RELATIVE to the setup file (so the saved
 .usda stays portable). Recipes only place References + transforms + a beam; the
-component geometry lives in components/<component>/lo.usda (see
+component geometry lives in components/<component>/model.usda (see
 optics_lib.build_component_library).
 
 A recipe is the *starting point* for a project. Teams then edit positions in the
@@ -24,17 +24,17 @@ def blank_bench(stage, root, ref):
         ny=ny,
         x0=-(nx - 1) * ol.GRID_MM / 2.0,
         y0=-(ny - 1) * ol.GRID_MM / 2.0,
-        asset_rel_path=ref("Breadboard/MB6060_M-Step/lo.usda"),
+        asset_rel_path=ref("Breadboard/MB6060_M-Step/model.usda"),
     )
 
 
 def two_lens(stage, root, ref):
     """Minimal linear demo: two lenses, a fold mirror, a detector."""
     ol.add_breadboard(stage, root, nx=16, ny=12, x0=0.0, y0=-150.0)
-    ol.place(stage, root, "Lens_01",   ref("Low_model/lens_f100.usda"),  50, 0)
-    ol.place(stage, root, "Lens_02",   ref("Low_model/lens_f100.usda"), 150, 0)
-    ol.place(stage, root, "FoldMirror", ref("Low_model/mirror_1in.usda"), 225, 0, rotate_z_deg=45)
-    ol.place(stage, root, "Detector",  ref("Low_model/detector.usda"),  300, 0)
+    ol.place(stage, root, "Lens_01",   ref("Generic/lens_f100.usda"),  50, 0)
+    ol.place(stage, root, "Lens_02",   ref("Generic/lens_f100.usda"), 150, 0)
+    ol.place(stage, root, "FoldMirror", ref("Generic/mirror_1in.usda"), 225, 0, rotate_z_deg=45)
+    ol.place(stage, root, "Detector",  ref("Generic/detector.usda"),  300, 0)
     ol.add_beam(stage, root, [[(0, 0, 0), (50, 0, 0), (150, 0, 0), (300, 0, 0)]], wavelength_nm=532.0)
     # straight beam from the first optic to the detector (lenses are pass-through)
     ol.set_beam_path(stage, root, [["Lens_01", "Detector"]])
@@ -44,19 +44,19 @@ def slm_imaging(stage, root, ref):
     """The lab's reflective-SLM holographic imaging system (folded beam)."""
     ol.add_breadboard(stage, root, nx=28, ny=14, x0=-150.0, y0=-250.0)
 
-    ol.place(stage, root, "Beamsplitter", ref("Low_model/beamsplitter_cube.usda"), 0, 0)
+    ol.place(stage, root, "Beamsplitter", ref("Generic/beamsplitter_cube.usda"), 0, 0)
     # input arm on -Y (optics rotated 90deg)
-    ol.place(stage, root, "Laser",      ref("Low_model/laser_fiber.usda"),      0, -200, rotate_z_deg=90)
-    ol.place(stage, root, "Polarizer",  ref("Low_model/polarizer.usda"),        0, -125, rotate_z_deg=90)
-    ol.place(stage, root, "CollimLens", ref("Low_model/lens_collimating.usda"), 0,  -50, rotate_z_deg=90)
+    ol.place(stage, root, "Laser",      ref("Generic/laser_fiber.usda"),      0, -200, rotate_z_deg=90)
+    ol.place(stage, root, "Polarizer",  ref("Generic/polarizer.usda"),        0, -125, rotate_z_deg=90)
+    ol.place(stage, root, "CollimLens", ref("Generic/lens_collimating.usda"), 0,  -50, rotate_z_deg=90)
     # SLM on -X, reflective face toward the cube
-    ol.place(stage, root, "SLM",        ref("Low_model/slm.usda"),            -75, 0)
+    ol.place(stage, root, "SLM",        ref("Generic/slm.usda"),            -75, 0)
     # imaging arm on +X
-    ol.place(stage, root, "ImagingLens",   ref("Low_model/lens_imaging.usda"),     125, 0)
-    ol.place(stage, root, "FourierFilter", ref("Low_model/iris_fourier.usda"),     200, 0)
-    ol.place(stage, root, "CylLens",       ref("Low_model/lens_cylindrical.usda"), 275, 0)
-    ol.place(stage, root, "Eyepiece",      ref("Low_model/eyepiece.usda"),         350, 0)
-    ol.place(stage, root, "Camera",        ref("Low_model/camera.usda"),           475, 0)
+    ol.place(stage, root, "ImagingLens",   ref("Generic/lens_imaging.usda"),     125, 0)
+    ol.place(stage, root, "FourierFilter", ref("Generic/iris_fourier.usda"),     200, 0)
+    ol.place(stage, root, "CylLens",       ref("Generic/lens_cylindrical.usda"), 275, 0)
+    ol.place(stage, root, "Eyepiece",      ref("Generic/eyepiece.usda"),         350, 0)
+    ol.place(stage, root, "Camera",        ref("Generic/camera.usda"),           475, 0)
 
     ol.add_beam(stage, root, [
         [(0, -200, 0), (0, -125, 0), (0, -50, 0), (0, 0, 0), (-75, 0, 0)],

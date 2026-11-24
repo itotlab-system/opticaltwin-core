@@ -112,9 +112,8 @@ common Ø1″ / 30 mm-cage standards. Re-run it any time to rebuild.
 
 Simple shapes at the right size are all a layout needs. To work with models that
 look like the hardware on your bench, add manufacturer CAD: see
-[Manufacturer CAD models](cad-models.md). Generated parts have one model each,
-so the *Simple* and *Detailed* views show them the same; CAD parts have a light
-model for editing and a detailed one for looking.
+[Manufacturer CAD models](cad-models.md). Every part, generated or CAD, has
+exactly one model: `components/<Group>/<Model>/model.usda`.
 
 Nothing is fetched from the internet while the app runs, so it works on a
 closed lab network once installed.

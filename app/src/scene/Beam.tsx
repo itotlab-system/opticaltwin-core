@@ -5,6 +5,7 @@ import { Html, Line } from "@react-three/drei";
 import type { BeamSegment } from "../types";
 import { DEFAULT_BEAM_WIDTH_MM, drawnLengthOf, naturalLengthOf } from "../beamShape";
 import type { BoardBounds } from "../beamShape";
+import { SettingsBridge, useSettings } from "../settings";
 
 const YAXIS = new THREE.Vector3(0, 1, 0);
 // A leg drawn thinner than this disappears against a 600 mm bench.
@@ -62,6 +63,10 @@ export default function Beam({
   /** Rendered next to the selected leg, in 3D. */
   editor?: ReactNode;
 }) {
+  // Read here, inside the Canvas (which bridges context), and handed on to the
+  // editor below: <Html> renders into its own React root, where useSettings()
+  // would otherwise return null and the editor crash on open.
+  const settings = useSettings();
   const { frustums, centerlines, picks, anchor } = useMemo(() => {
     const frustums: Frustum[] = [];
     const centerlines: {
@@ -218,7 +223,7 @@ export default function Beam({
           zIndexRange={[40, 30]}
           style={{ pointerEvents: "auto" }}
         >
-          {editor}
+          <SettingsBridge value={settings}>{editor}</SettingsBridge>
         </Html>
       )}
     </>

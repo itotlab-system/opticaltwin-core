@@ -8,7 +8,7 @@
     generic_parts  stand-in parts for anything the catalogue lacks
     usd_to_web     setup .usda -> .glb for the static viewer
                    (python -m opticaltwin.usd_to_web)
-    cad_importer   vendor STEP -> hi/lo component assets
+    cad_importer   vendor STEP -> one model.usda per component
                    (python -m opticaltwin.cad_importer; needs cadquery-ocp)
 
 The web backend (backend/) and the scripts import from here; nothing here

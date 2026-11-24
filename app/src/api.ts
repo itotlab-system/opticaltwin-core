@@ -59,26 +59,20 @@ export const api = {
   ): Promise<{ ok: boolean; project: ProjectSummary }> =>
     post(`/api/projects/${name}/meta`, meta),
 
-  // One catalogue part's geometry, fetched only when the part browser is about
-  // to draw its tile. `hi` here is affordable because it is one part at a time
-  // and the result becomes a picture; it never enters the project payload.
-  libraryPreview: (
-    asset: string,
-    renderMode: "hi" | "lo" = "hi"
-  ): Promise<{ component: Component }> =>
-    fetch(
-      `/api/library/preview/${encodeURI(asset)}?renderMode=${renderMode}`
-    ).then(j),
+  // One catalogue part's geometry, fetched when the part browser draws its
+  // tile or the placement ghost needs it. One part at a time: the project
+  // payload carries only each part's metadata, never its mesh.
+  libraryPreview: (asset: string): Promise<{ component: Component }> =>
+    fetch(`/api/library/preview/${encodeURI(asset)}`).then(j),
 
-  getProject: (p: string, renderMode: "hi" | "lo" = "lo"): Promise<ProjectData> =>
-    fetch(`/api/projects/${p}?renderMode=${renderMode}`).then(j),
+  getProject: (p: string): Promise<ProjectData> =>
+    fetch(`/api/projects/${p}`).then(j),
 
   updateBoardModel: (
     p: string,
-    asset: string,
-    renderMode: "hi" | "lo" = "lo"
+    asset: string
   ): Promise<ProjectData & { ok: boolean }> =>
-    post(`/api/projects/${p}/board/model`, { asset, renderMode }),
+    post(`/api/projects/${p}/board/model`, { asset }),
 
   // Moves return a MovePayload, not the whole scene: transforms plus the
   // retraced beam, with no geometry. Fold it in with mergeMove.
@@ -92,7 +86,6 @@ export const api = {
       rotX?: number;
       rotY?: number;
       rotZ?: number;
-      renderMode?: "hi" | "lo";
     }
   ): Promise<MovePayload> =>
     post(`/api/projects/${p}/components/${c}`, body),
@@ -100,18 +93,16 @@ export const api = {
   updateComponentModel: (
     p: string,
     c: string,
-    asset: string,
-    renderMode: "hi" | "lo" = "lo"
+    asset: string
   ): Promise<ProjectData & { ok: boolean }> =>
-    post(`/api/projects/${p}/components/${c}/model`, { asset, renderMode }),
+    post(`/api/projects/${p}/components/${c}/model`, { asset }),
 
   // Move several components in one request — one USD save, one beam retrace.
   updateComponents: (
     p: string,
-    updates: ComponentUpdate[],
-    renderMode: "hi" | "lo" = "lo"
+    updates: ComponentUpdate[]
   ): Promise<MovePayload> =>
-    post(`/api/projects/${p}/components/batch`, { updates, renderMode }),
+    post(`/api/projects/${p}/components/batch`, { updates }),
 
   // Replaces the whole group list: create, rename and ungroup all go through it.
   updateGroups: (p: string, groups: ComponentGroup[]): Promise<{ ok: boolean; groups: ComponentGroup[] }> =>
@@ -121,14 +112,13 @@ export const api = {
   // beam height, facing along it); false puts it exactly where it was dropped.
   // Answers with a move payload plus the new part(s), merged with mergeMove.
   addComponent: (
-    p: string, asset: string, x: number, y: number, snap = true,
-    renderMode: "hi" | "lo" = "lo",
+    p: string, asset: string, x: number, y: number, snap = true
   ): Promise<MovePayload & { name: string; snapped: string | null }> =>
-    post(`/api/projects/${p}/add`, { asset, x, y, snap, renderMode }),
+    post(`/api/projects/${p}/add`, { asset, x, y, snap }),
 
   // Turn a mirror or beamsplitter so the beam leaves it to that side.
-  foldBeam: (p: string, c: string, turn: "left" | "right", renderMode: string): Promise<MovePayload> =>
-    post(`/api/projects/${p}/components/${c}/fold`, { turn, renderMode }),
+  foldBeam: (p: string, c: string, turn: "left" | "right"): Promise<MovePayload> =>
+    post(`/api/projects/${p}/components/${c}/fold`, { turn }),
 
   // --- building a bench from a photo (see PhotoBuilder) -------------------
   uploadPhoto: (p: string, jpeg: Blob): Promise<{ ok: boolean; file: string }> =>
@@ -140,6 +130,16 @@ export const api = {
 
   photoUrl: (p: string, file: string) => `/api/projects/${p}/photo/${file}`,
 
+  uploadThumbnail: (p: string, png: Blob): Promise<{ ok: boolean }> =>
+    fetch(`/api/projects/${p}/thumbnail`, {
+      method: "POST",
+      headers: { "Content-Type": "image/png", ...editorHeaders() },
+      body: png,
+    }).then(j),
+
+  thumbnailUrl: (p: string, v: string) =>
+    `/api/projects/${encodeURIComponent(p)}/thumbnail.png?v=${encodeURIComponent(v)}`,
+
   getPhotoLabels: (p: string): Promise<PhotoLabels> =>
     fetch(`/api/projects/${p}/photo-labels`).then(j),
 
@@ -147,9 +147,9 @@ export const api = {
     post(`/api/projects/${p}/photo-labels`, labels),
 
   buildFromPhoto: (
-    p: string, beamHeight: number, parts: PhotoBuildPart[], renderMode: string,
+    p: string, beamHeight: number, parts: PhotoBuildPart[],
   ): Promise<ProjectData & { built: Record<string, string> }> =>
-    post(`/api/projects/${p}/photo/build`, { beamHeight, parts, renderMode }),
+    post(`/api/projects/${p}/photo/build`, { beamHeight, parts }),
 
   deleteComponent: (p: string, c: string) =>
     post(`/api/projects/${p}/delete/${c}`),
@@ -162,11 +162,10 @@ export const api = {
     names: string[],
     offsetX: number,
     offsetY: number,
-    renderMode: "hi" | "lo" = "lo",
     sourceProject?: string
   ): Promise<ProjectData & { ok: boolean; names: string[] }> =>
     post(`/api/projects/${p}/components/duplicate`,
-         { names, offsetX, offsetY, renderMode, sourceProject }),
+         { names, offsetX, offsetY, sourceProject }),
 
   updatePins: (p: string, pins: PinAnnotation[]): Promise<{ ok: boolean; pins: PinAnnotation[] }> =>
     post(`/api/projects/${p}/pins`, { pins }),
@@ -184,10 +183,9 @@ export const api = {
   switchLasers: (
     p: string,
     on: boolean,
-    names?: string[],
-    renderMode: "hi" | "lo" = "lo"
+    names?: string[]
   ): Promise<MovePayload & { switched: string[] }> =>
-    post(`/api/projects/${p}/lasers`, { on, names, renderMode }),
+    post(`/api/projects/${p}/lasers`, { on, names }),
 
   // Draw one leg of the beam: its width at each end, optionally pinched to a
   // waist. Affects only that leg — it is a sketch, not a simulation.
@@ -201,10 +199,9 @@ export const api = {
       waistW?: number;
       lengthMm?: number;
       clear?: boolean;
-    },
-    renderMode: "hi" | "lo" = "lo"
+    }
   ): Promise<MovePayload> =>
-    post(`/api/projects/${p}/beam/shape`, { ...body, renderMode }),
+    post(`/api/projects/${p}/beam/shape`, body),
 
   // Set or clear a pin override on a beam node. position=null clears the pin.
   pinBeamNode: (p: string, segment: number, node: number, position: [number, number, number] | null) =>
@@ -212,11 +209,11 @@ export const api = {
 
   // Rewind / replay one editing step. `stepped` is false when the stack is
   // empty; the payload is still the current scene either way.
-  undo: (p: string, renderMode: "hi" | "lo" = "lo"): Promise<ProjectData & { stepped: boolean }> =>
-    post(`/api/projects/${p}/undo`, { renderMode }),
+  undo: (p: string): Promise<ProjectData & { stepped: boolean }> =>
+    post(`/api/projects/${p}/undo`),
 
-  redo: (p: string, renderMode: "hi" | "lo" = "lo"): Promise<ProjectData & { stepped: boolean }> =>
-    post(`/api/projects/${p}/redo`, { renderMode }),
+  redo: (p: string): Promise<ProjectData & { stepped: boolean }> =>
+    post(`/api/projects/${p}/redo`),
 
 
   // cache-busted model URL for the viewport

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LaserOption, NewProjectStart, ProjectSummary, Template } from "../types";
 import { useSettings } from "../settings";
+import { api } from "../api";
 import { cachedBenchThumb, pruneBenchThumbs, useBenchThumbnails } from "./benchThumbs";
 import { boardLabel, editedLabel } from "./relativeTime";
 import CardMenu from "./CardMenu";
@@ -88,7 +89,10 @@ export default function ProjectGallery({
   // offscreen canvas. Every card is "visible" — a gallery is a short list, and
   // sorting the queue by scroll position would cost more than it saves.
   const names = useMemo(() => projects.map((p) => p.name), [projects]);
-  const { forge } = useBenchThumbnails(projects, names);
+  // A bench with a saved picture is shown from that file and never drawn here:
+  // only the ones without one fall back to rendering the bench in the browser.
+  const toDraw = useMemo(() => projects.filter((p) => !p.thumbnail), [projects]);
+  const { forge } = useBenchThumbnails(toDraw, names);
 
   // Deleted and renamed projects leave their picture behind in localStorage.
   useEffect(() => { pruneBenchThumbs(names); }, [names]);
@@ -234,7 +238,19 @@ export default function ProjectGallery({
         }}
       >
         <div className="card-thumb">
-          {cachedBenchThumb(p) ? (
+          {p.thumbnail ? (
+            <div className="card-thumb-stack">
+              <img
+                src={api.thumbnailUrl(p.name, p.thumbnail.v)}
+                alt="" draggable={false} data-testid="card-thumbnail"
+              />
+              {!p.thumbnail.current && (
+                <span className="card-thumb-outdated" title={t("thumb_outdated_hint")}>
+                  {t("thumb_outdated")}
+                </span>
+              )}
+            </div>
+          ) : cachedBenchThumb(p) ? (
             <img src={cachedBenchThumb(p)} alt="" draggable={false} />
           ) : (
             <span className="card-thumb-wait muted">
