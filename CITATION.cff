@@ -55,7 +55,6 @@ doi: 10.5281/zenodo.21594827
 # the Zenodo DOI stay there and the paper starts its own tally. To keep the two
 # linked, cite the concept DOI from inside the paper and add the paper's DOI to
 # the Zenodo record as a related identifier (IsDescribedBy / IsSupplementTo).
-# `python scripts/citations.py --total <paper-doi>` sums them locally.
 #
 # preferred-citation:
 #   type: article
